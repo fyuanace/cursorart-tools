@@ -72,7 +72,7 @@
   "newChildDocNavRefUntitled": "Untitled document",
   "newChildDocNavRefFailed": "Failed to create child doc block",
   "cannotResolveDoc": "Cannot resolve current document",
-  "locateInTreeToolbarTip": "Expand and select this document in the file tree",
+  "locateInTreeToolbarTip": "Expand, select, and center this document in the file tree",
   "locateInTreeBreadcrumbTip": "Reveal in file tree",
   "locateInTreeCurrentDoc": "Reveal in file tree",
   "locateInTreeMenuLabel": "Reveal in file tree",

@@ -12,11 +12,11 @@ Set **cursor极简** for both light and dark. Settings: Plugins menu → **curso
 
 **Light**
 
-<img src="image/light.png" alt="Light preview" width="720">
+<img src="../../image/light.png" alt="Light preview" width="720">
 
 **Dark**
 
-<img src="image/dark.png" alt="Dark preview" width="720">
+<img src="../../image/dark.png" alt="Dark preview" width="720">
 
 ## Highlights
 
@@ -61,7 +61,7 @@ Favorites and recents are simple lists. The row you click is the only highlight.
 
 The outline hides the doc name and Hx badges, bolds top-level headings, and follows the caret.
 
-<img src="image/display.png" alt="Display: favorites, recents, sidebar, and outline" width="720">
+<img src="../../image/display.png" alt="Display: favorites, recents, sidebar, and outline" width="720">
 
 ## Finding docs and child pages
 
@@ -77,9 +77,9 @@ Unlike Notion, SiYuan does not index child docs in the body by default.
 
 Opening a doc injects the current-level child-doc blocks. You can also delete those children from the index.
 
-<img src="image/docs-path.png" alt="Document path breadcrumb and document-ref style" width="720">
+<img src="../../image/docs-path.png" alt="Document path breadcrumb and document-ref style" width="720">
 
-<img src="image/docs-child.png" alt="Child-doc index in the body and outline" width="720">
+<img src="../../image/docs-child.png" alt="Child-doc index in the body and outline" width="720">
 
 ## Too many buttons
 
@@ -87,9 +87,9 @@ The vertical dock strip eats space. Hide what you do not use (layout switches ne
 
 The slash menu gets long. Turn off commands you never pick.
 
-<img src="image/slash-settings.png" alt="Slash menu: toggle unused commands" width="720">
+<img src="../../image/slash-settings.png" alt="Slash menu: toggle unused commands" width="720">
 
-<img src="image/slash-menu.png" alt="Slash command menu" width="720">
+<img src="../../image/slash-menu.png" alt="Slash command menu" width="720">
 
 ## Editing
 
@@ -101,7 +101,7 @@ Document-ref icons are on by default so they do not look like plain text.
 
 Block line height is a slider in Style.
 
-<img src="image/editing.png" alt="Editing: DPI image scale and CJK-Latin spacing" width="720">
+<img src="../../image/editing.png" alt="Editing: DPI image scale and CJK-Latin spacing" width="720">
 
 ## Config across PCs
 
@@ -113,7 +113,7 @@ Overwrite on one machine, download on the other, then restart.
 
 Turn on SiYuan cloud sync or S3 first.
 
-<img src="image/config-sync.png" alt="Config sync: overwrite and download" width="720">
+<img src="../../image/config-sync.png" alt="Config sync: overwrite and download" width="720">
 
 ## Install
 

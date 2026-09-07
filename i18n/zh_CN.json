@@ -72,7 +72,7 @@
   "newChildDocNavRefUntitled": "未命名文档",
   "newChildDocNavRefFailed": "新建子文档块失败",
   "cannotResolveDoc": "无法识别当前文档",
-  "locateInTreeToolbarTip": "在文档树中展开并选中当前文档",
+  "locateInTreeToolbarTip": "在文档树中展开并选中当前文档，滚到视图中间",
   "locateInTreeBreadcrumbTip": "定位到文档树",
   "locateInTreeCurrentDoc": "定位到文档树",
   "locateInTreeMenuLabel": "定位到文档树",

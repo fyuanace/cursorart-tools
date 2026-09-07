@@ -3784,32 +3784,36 @@ function openFileTreeDock() {
     return false;
 }
 
-async function locateDocInFileTree(docId, protyle) {
+async function locateDocInFileTree(docId, protyle, plugin) {
+    const host = plugin?.plugin || window.__cursorArtToolsPlugin;
+    host?._unpinSidebarLists?.();
     openFileTreeDock();
     if (typeof expandDocTree === "function") {
         await expandDocTree({ id: docId, isSetCurrent: true });
-        return;
-    }
-    const p = unwrapProtyle(protyle);
-    const notebookId = p?.notebookId;
-    const path = p?.path;
-    if (!notebookId || !path) {
-        const info = await getDocPathById(docId);
-        if (!info?.notebook || !info?.path) {
-            throw new Error("path not found");
-        }
+    } else {
+        const p = unwrapProtyle(protyle);
+        const notebookId = p?.notebookId;
+        const path = p?.path;
         const file = getModelByDockType?.("file");
         if (!file?.selectItem) {
             throw new Error("file dock unavailable");
         }
-        await file.selectItem(info.notebook, info.path);
+        if (notebookId && path) {
+            await file.selectItem(notebookId, path);
+        } else {
+            const info = await getDocPathById(docId);
+            if (!info?.notebook || !info?.path) {
+                throw new Error("path not found");
+            }
+            await file.selectItem(info.notebook, info.path);
+        }
+    }
+    if (typeof host?._focusOfficialTreeDoc === "function") {
+        host._focusOfficialTreeDoc(docId);
         return;
     }
-    const file = getModelByDockType?.("file");
-    if (!file?.selectItem) {
-        throw new Error("file dock unavailable");
-    }
-    await file.selectItem(notebookId, path);
+    const li = document.querySelector(`#layouts .sy__file ul[data-url] .b3-list-item[data-node-id="${docId}"]`);
+    li?.scrollIntoView({block: "center", inline: "nearest"});
 }
 
 async function handleLocateDocInTreeForProtyle(plugin, protyle) {
@@ -3820,7 +3824,7 @@ async function handleLocateDocInTreeForProtyle(plugin, protyle) {
             showMessage(plugin.i18n.cannotResolveDoc);
             return;
         }
-        await locateDocInFileTree(docId, editor);
+        await locateDocInFileTree(docId, editor, plugin);
         showMessage(plugin.i18n.locateInTreeDone);
     } catch (error) {
         console.warn(`${LOG_PREFIX} locateDocInFileTree failed`, error);

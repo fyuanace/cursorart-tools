@@ -86,7 +86,7 @@ module.exports = class CursorArtTools extends Plugin {
          * 5) 正文滚动/光标位置同步右侧大纲当前项（复用官方 Outline.setCurrent）
          * 6) 面包屑改为文档路径（笔记本/文件夹/文档），不再显示页内块层级
          * 7) 标题栏截图高度 55 物理像素：CSS = 55 / devicePixelRatio
-         * 8) 指向文档的块引用显示文档图标并加粗（不改标题/段落引用）
+         * 8) 指向文档的块引用显示文档图标与下划线（不加粗；不改标题/段落引用）
          * 9) 文件树顶部「最近打开」区块
          * 10) 面包屑收藏按钮 + 文件树「收藏」区块
          * 11) 顶栏前进按钮后捐赠爱心：点开支持页并计数；同电脑名点过即隐藏，换电脑名或复位后再出现
@@ -107,7 +107,7 @@ module.exports = class CursorArtTools extends Plugin {
             const SETTINGS_STYLE_ID = "cursorart-tools-setting-css";
             const FEATURE_STYLE_ID = "cursorart-tools-feature-css";
             const DIALOG_ID = "starterSettingsDialog";
-            const PLUGIN_VERSION = "1.2.0";
+            const PLUGIN_VERSION = "1.2.5";
             const DONATE_HEART_ID = "starterDonateHeart";
             const DONATE_FLAG_KEY = "cursorart-donate-clicked";
             const DONATE_HOST_KEY = "cursorart-donate-clicked-host";
@@ -288,7 +288,7 @@ module.exports = class CursorArtTools extends Plugin {
                 hiddenDockTypes: [...FACTORY_HIDDEN_DOCK_TYPES],
                 adaptiveTopbarHeight: true,
                 dockInContent: true,
-                customDocRefStyle: false,
+                customDocRefStyle: true,
                 plainTableHead: true,
                 blockLineHeight: DEFAULT_BLOCK_LH,
                 hideNotebooks: false,
@@ -940,6 +940,42 @@ html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul 
 #layouts .sy__file .starter-fav-docs__more {
     cursor: pointer;
 }
+#layouts .layout__center .protyle-breadcrumb > .protyle-breadcrumb__space {
+    flex: 0 0 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden;
+}
+#layouts .layout__center .starter-doc-path {
+    display: flex;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+#layouts .layout__center .starter-doc-path span {
+    max-width: none;
+}
+#layouts .layout__center .starter-doc-path__item {
+    flex: 0 0 auto;
+    min-width: auto;
+    overflow: visible;
+    white-space: nowrap;
+    cursor: pointer;
+    border-radius: var(--b3-border-radius-s);
+    padding: 2px 6px;
+    color: var(--b3-theme-on-background);
+}
+#layouts .layout__center .starter-doc-path--tight .starter-doc-path__item--last {
+    flex: 1 1 auto;
+    min-width: 4em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 #layouts .layout__center .protyle-breadcrumb > .starter-fav-btn {
     flex-shrink: 0;
 }
@@ -958,7 +994,7 @@ html.starter-block-line-height .b3-typography p {
 }
 html.starter-custom-doc-ref .b3-typography span[data-type~="block-ref"][data-id]:not(.av__celltext):not([custom-fhelper-child-nav] *),
 html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="block-ref"][data-id]:not(.av__celltext):not([custom-fhelper-child-nav] *) {
-    font-weight: 700;
+    font-weight: inherit;
     color: var(--b3-theme-on-background);
     text-decoration: none;
     border-bottom: none;
@@ -1210,7 +1246,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     "",
                     settingRow(
                         "链接样式",
-                        "开启 = 文档引用显示图标、加粗与下划线；关闭 = 思源原生块引用",
+                        "开启 = 文档引用显示图标与下划线；关闭 = 思源原生块引用",
                         switchHtml("data-starter-doc-ref-style", docRefChecked)
                     ) +
                     settingRow(
@@ -2438,14 +2474,27 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 }
             };
 
+            const pathBarResizeObs = new ResizeObserver(() => {
+                document.querySelectorAll(`#layouts .layout__center .${PATH_BAR_CLASS}`).forEach((bar) => {
+                    applyPathBarLayout(bar);
+                });
+            });
+
+            const pathPrefixLabel = (crumbs, index) =>
+                crumbs.slice(0, index + 1).map((c) => c.name).join("/");
+
             const crumbsHtml = (crumbs, rootId) => {
                 const n = crumbs.length;
                 return crumbs
                     .map((c, index) => {
                         const last = index === n - 1;
-                        const keep = n <= 3 || index === 0 || index >= n - 2;
+                        const first = index === 0;
+                        const keep = first || last;
+                        const prefix = pathPrefixLabel(crumbs, index);
                         const idAttr = c.id ? ` data-starter-doc-id="${c.id}"` : "";
-                        const item = `<span class="starter-doc-path__item${keep ? " starter-doc-path__item--keep" : " starter-doc-path__item--mid"}" data-starter-path-item="1"${idAttr} data-starter-root="${rootId}" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span>`;
+                        const role = keep ? "keep" : "mid";
+                        const extra = `${first ? " starter-doc-path__item--first" : ""}${last ? " starter-doc-path__item--last" : ""}`;
+                        const item = `<span class="starter-doc-path__item starter-doc-path__item--${role}${extra} ariaLabel" data-starter-path-item="1"${idAttr} data-starter-root="${rootId}" data-starter-name="${escapeHtml(c.name)}" aria-label="${escapeHtml(prefix)}">${escapeHtml(c.name)}</span>`;
                         if (last) {
                             return item;
                         }
@@ -2454,9 +2503,34 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     .join("");
             };
 
+            const applyPathBarLayout = (bar) => {
+                if (!bar) {
+                    return;
+                }
+                const width = String(bar.clientWidth);
+                if (bar.dataset.starterLaidWidth === width) {
+                    return;
+                }
+                bar.classList.remove("starter-doc-path--compact", "starter-doc-path--tight");
+                bar.querySelectorAll(".starter-doc-path__item--mid").forEach((el) => {
+                    el.textContent = el.getAttribute("data-starter-name") || "...";
+                });
+                if (bar.scrollWidth > bar.clientWidth + 1) {
+                    bar.classList.add("starter-doc-path--compact");
+                    bar.querySelectorAll(".starter-doc-path__item--mid").forEach((el) => {
+                        el.textContent = "...";
+                    });
+                }
+                if (bar.scrollWidth > bar.clientWidth + 1) {
+                    bar.classList.add("starter-doc-path--tight");
+                }
+                bar.dataset.starterLaidWidth = width;
+            };
+
             const ensurePathBar = (host) => {
                 let bar = host.querySelector(`:scope > .${PATH_BAR_CLASS}`);
                 if (bar) {
+                    pathBarResizeObs.observe(bar);
                     return bar;
                 }
                 const official = host.querySelector(":scope > .protyle-breadcrumb__bar");
@@ -2473,6 +2547,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     },
                     {passive: true}
                 );
+                pathBarResizeObs.observe(bar);
                 return bar;
             };
 
@@ -2495,10 +2570,13 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     return;
                 }
                 if (bar.dataset.starterPathRoot === rootId && bar.querySelector("[data-starter-path-item]")) {
+                    applyPathBarLayout(bar);
                     return;
                 }
                 bar.innerHTML = crumbsHtml(crumbs, rootId);
                 bar.dataset.starterPathRoot = rootId;
+                delete bar.dataset.starterLaidWidth;
+                requestAnimationFrame(() => applyPathBarLayout(bar));
             };
 
             const refreshAllPathBars = () => {
@@ -2571,6 +2649,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 document.removeEventListener("click", onPathCrumbClick, true);
                 document.removeEventListener("loaded-protyle-static", onProtylePathBreadcrumb);
                 document.removeEventListener("switch-protyle", onProtylePathBreadcrumb);
+                pathBarResizeObs.disconnect();
                 pathBarHostObs?.disconnect();
                 pathBarTitleObs?.disconnect();
                 pathBarHostObs = null;
@@ -2904,7 +2983,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
             position: relative;
             padding-left: 1.28em;
             padding-bottom: 0.14em;
-            font-weight: 700;
+            font-weight: inherit;
             color: var(--b3-theme-on-background);
             text-decoration: none;
             background-image: linear-gradient(var(--b3-border-color), var(--b3-border-color));
@@ -3477,6 +3556,45 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 listNavId = "";
                 paintSidebarCurrent();
             };
+            const scrollOfficialTreeDocToCenter = (docId) => {
+                const li = officialTreeItem(docId);
+                if (!li) {
+                    return false;
+                }
+                document
+                    .querySelectorAll("#layouts .sy__file ul[data-url] .b3-list-item--focus")
+                    .forEach((el) => {
+                        if (el !== li) {
+                            el.classList.remove("b3-list-item--focus");
+                        }
+                    });
+                li.classList.add("b3-list-item--focus");
+                const scroller =
+                    li.closest(".starter-file-scroll") ||
+                    document.querySelector("#layouts .sy__file > .starter-file-scroll");
+                if (scroller) {
+                    const liRect = li.getBoundingClientRect();
+                    const box = scroller.getBoundingClientRect();
+                    scroller.scrollTop += (liRect.top + liRect.height / 2) - (box.top + box.height / 2);
+                } else {
+                    li.scrollIntoView({block: "center", inline: "nearest"});
+                }
+                return true;
+            };
+            const focusOfficialTreeDoc = (docId) => {
+                if (!docId) {
+                    return;
+                }
+                unpinSidebarLists();
+                const run = () => scrollOfficialTreeDocToCenter(docId);
+                run();
+                requestAnimationFrame(run);
+                [40, 120, 280, 500].forEach((ms) => setTimeout(run, ms));
+            };
+            if (pluginHost) {
+                pluginHost._unpinSidebarLists = unpinSidebarLists;
+                pluginHost._focusOfficialTreeDoc = focusOfficialTreeDoc;
+            }
             const paintSidebarCurrent = () => {
                 const favId = sidebarCurrentId("fav");
                 const recentId = sidebarCurrentId("recent");
@@ -4618,6 +4736,8 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 unmountToggles();
                 sides.forEach(unmountOne);
                 if (pluginHost) {
+                    pluginHost._unpinSidebarLists = null;
+                    pluginHost._focusOfficialTreeDoc = null;
                     uninstallEditorFeatures(pluginHost);
                 }
             };

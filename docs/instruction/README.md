@@ -12,11 +12,11 @@
 
 **亮色**
 
-<img src="image/light.png" alt="亮色预览" width="720">
+<img src="../../image/light.png" alt="亮色预览" width="720">
 
 **暗色**
 
-<img src="image/dark.png" alt="暗色预览" width="720">
+<img src="../../image/dark.png" alt="暗色预览" width="720">
 
 ## 特色功能
 
@@ -63,7 +63,7 @@
 
 大纲不再显示文档名和 Hx 标记，一级标题加粗，滚动正文时大纲跟着走。
 
-<img src="image/display.png" alt="主题显示优化：收藏、最近打开、侧栏与大纲" width="720">
+<img src="../../image/display.png" alt="主题显示优化：收藏、最近打开、侧栏与大纲" width="720">
 
 ## 文档不好找、子文档难管
 
@@ -79,9 +79,9 @@
 
 打开文档时会自动植入当前层子文档块；也能按这些索引删除对应子文档。
 
-<img src="image/docs-path.png" alt="文档路径面包屑与文档引用样式" width="720">
+<img src="../../image/docs-path.png" alt="文档路径面包屑与文档引用样式" width="720">
 
-<img src="image/docs-child.png" alt="子文档索引：正文植入并出现在大纲" width="720">
+<img src="../../image/docs-child.png" alt="子文档索引：正文植入并出现在大纲" width="720">
 
 ## 菜单按钮太多
 
@@ -93,9 +93,9 @@
 
 可在设置里关掉用不到的斜杠命令，输入 `/` 更干净。
 
-<img src="image/slash-settings.png" alt="斜杠菜单：按项开关命令" width="720">
+<img src="../../image/slash-settings.png" alt="斜杠菜单：按项开关命令" width="720">
 
-<img src="image/slash-menu.png" alt="输入斜杠后的命令菜单" width="720">
+<img src="../../image/slash-menu.png" alt="输入斜杠后的命令菜单" width="720">
 
 ## 编辑体验
 
@@ -115,7 +115,7 @@
 
 样式里可调块行间距。
 
-<img src="image/editing.png" alt="编辑体验：高 DPI 图片缩放与中英文空格" width="720">
+<img src="../../image/editing.png" alt="编辑体验：高 DPI 图片缩放与中英文空格" width="720">
 
 ## 多台电脑配置不同步
 
@@ -127,7 +127,7 @@
 
 须先启用思源官方同步或 S3。
 
-<img src="image/config-sync.png" alt="配置同步：覆盖与下载云端配置" width="720">
+<img src="../../image/config-sync.png" alt="配置同步：覆盖与下载云端配置" width="720">
 
 ## 安装
 
