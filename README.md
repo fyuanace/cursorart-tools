@@ -6,7 +6,7 @@ SiYuan bazaar no longer allows new themes to ship `theme.js`. Interactive featur
 
 ## Theme gate
 
-**Sidebar top dock strip** and **title-bar height** run only while the active light/dark theme folder is `cursorart` (cursor极简). Switch away and those layout tweaks are undone. Other helpers (settings, favorites, recents, like button, …) stay available.
+**Sidebar top dock strip** runs only while the active light/dark theme folder is `cursorart`. Title-bar height is handled entirely in theme CSS via DPI media queries (about 55 device pixels). Other helpers stay available.
 
 The bazaar does **not** auto-install a companion theme or plugin. Install both packages yourself; this plugin shows a one-time tip if cursor极简 is not the current theme.
 
@@ -20,6 +20,10 @@ The bazaar does **not** auto-install a companion theme or plugin. Install both p
 
 Config is stored at `/data/storage/theme/cursorart/config.json` (same path as the old theme JS), so previous settings carry over.
 
+### v1.0.2
+
+- Title-bar height moved to theme CSS (DPI media queries); plugin no longer sets it
+
 ### v1.0.1
 
-- Dock strip + title-bar height only when theme `cursorart` is active
+- Dock strip only when theme `cursorart` is active

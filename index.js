@@ -26,9 +26,7 @@ module.exports = class CursorArtTools extends Plugin {
          * 11) 顶栏前进按钮后捐赠爱心：点开支持页并计数；同电脑名点过即隐藏，换电脑名或复位后再出现
          */
         (function () {
-            /** 截图/屏幕上量到的标题栏高度（设备像素），不含路径条 */
-            const TOPBAR_SCREEN_PX = 55;
-            /** 仅当当前亮/暗主题文件夹名为此时，才挪侧栏 dock、改标题栏高度 */
+            /** 仅当当前亮/暗主题文件夹名为此时，才挪侧栏 dock */
             const THEME_ID = "cursorart";
             const TOP_CLASS = "starter-dock--sidebar-top";
             const PANEL_CLASS = "starter-dock-panel--with-top";
@@ -63,22 +61,12 @@ module.exports = class CursorArtTools extends Plugin {
             let themeWsBound = false;
 
             const enableLayoutFeatures = () => {
-                if (!layoutFeaturesOn) {
-                    layoutFeaturesOn = true;
-                    startTopbarHeight();
-                } else {
-                    applyTopbarHeight();
-                }
+                layoutFeaturesOn = true;
                 mountAllDocks();
             };
 
             const disableLayoutFeatures = () => {
-                if (!layoutFeaturesOn && !document.getElementById("dockLeft")?.classList.contains(TOP_CLASS)) {
-                    document.documentElement.style.removeProperty("--starter-topbar-height");
-                    return;
-                }
                 layoutFeaturesOn = false;
-                stopTopbarHeight();
                 sides.forEach(unmountOne);
             };
 
@@ -105,7 +93,7 @@ module.exports = class CursorArtTools extends Plugin {
                 }
                 try {
                     showMessage(
-                        "侧栏顶工具条与标题栏高度仅在主题「cursor极简」启用时生效；请同时安装并切换该主题。",
+                        "侧栏顶工具条仅在主题「cursor极简」启用时生效；请同时安装并切换该主题。",
                         7000,
                         "info"
                     );
@@ -3948,27 +3936,6 @@ module.exports = class CursorArtTools extends Plugin {
                 root.style.setProperty("--starter-block-line-height", String(config.blockLineHeight));
             };
 
-            const applyTopbarHeight = () => {
-                const dpr = window.devicePixelRatio || 1;
-                const cssPx = TOPBAR_SCREEN_PX / dpr;
-                document.documentElement.style.setProperty(
-                    "--starter-topbar-height",
-                    `${Number(cssPx.toFixed(4))}px`
-                );
-            };
-
-            const startTopbarHeight = () => {
-                applyTopbarHeight();
-                window.addEventListener("resize", applyTopbarHeight);
-                window.visualViewport?.addEventListener("resize", applyTopbarHeight);
-            };
-
-            const stopTopbarHeight = () => {
-                window.removeEventListener("resize", applyTopbarHeight);
-                window.visualViewport?.removeEventListener("resize", applyTopbarHeight);
-                document.documentElement.style.removeProperty("--starter-topbar-height");
-            };
-
             const tryMount = async () => {
                 await initConfig();
                 await seedOfficialDefaultsIfNeeded();
@@ -4017,7 +3984,6 @@ module.exports = class CursorArtTools extends Plugin {
                 document.removeEventListener("click", suppressActiveDockCollapse, false);
                 stopThemeWatch();
                 disableLayoutFeatures();
-                stopTopbarHeight();
                 stopOutlineFollow();
                 stopPathBreadcrumb();
                 document.documentElement.classList.remove(
