@@ -124,6 +124,10 @@ Turn on SiYuan cloud sync or S3 first.
 
 Theme: [cursorart](https://github.com/fyuanace/cursorart) · Plugin: [cursorart-tools](https://github.com/fyuanace/cursorart-tools)
 
+## Support the author
+
+If this theme or plugin helps you, please visit the [support page](https://siyuan.ysoft.site) to like it, join the QQ group, or sponsor. QQ group: `1091105807`.
+
 ## Changelog
 
 ### Theme cursor极简

@@ -138,6 +138,10 @@
 
 主题：[cursorart](https://github.com/fyuanace/cursorart)　插件：[cursorart-tools](https://github.com/fyuanace/cursorart-tools)
 
+## 支持作者
+
+如果这个主题或插件对您有帮助，欢迎到[支持页](https://siyuan.ysoft.site)点个喜欢、加 QQ 群或赞助。QQ 群：`1091105807`。
+
 ## 版本更新
 
 ### 主题 cursor极简
