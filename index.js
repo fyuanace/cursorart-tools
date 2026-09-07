@@ -1,4 +1,4 @@
-const {Plugin} = require("siyuan");
+const {Plugin, showMessage} = require("siyuan");
 
 module.exports = class CursorArtTools extends Plugin {
     async onload() {
@@ -6,6 +6,7 @@ module.exports = class CursorArtTools extends Plugin {
             return;
         }
         window.__cursorArtToolsLoaded = true;
+        window.__cursorArtToolsPlugin = this;
         this._startFeature();
     }
 
@@ -27,6 +28,8 @@ module.exports = class CursorArtTools extends Plugin {
         (function () {
             /** 截图/屏幕上量到的标题栏高度（设备像素），不含路径条 */
             const TOPBAR_SCREEN_PX = 55;
+            /** 仅当当前亮/暗主题文件夹名为此时，才挪侧栏 dock、改标题栏高度 */
+            const THEME_ID = "cursorart";
             const TOP_CLASS = "starter-dock--sidebar-top";
             const PANEL_CLASS = "starter-dock-panel--with-top";
             const TOGGLE_LEFT_ID = "starterToggleLeft";
@@ -43,6 +46,112 @@ module.exports = class CursorArtTools extends Plugin {
             const DONATE_FLAG_KEY = "cursorart-donate-clicked";
             const DONATE_HOST_KEY = "cursorart-donate-clicked-host";
             const DONATE_PAGE_URL = "https://siyuan.ysoft.site";
+            const THEME_HINT_KEY = "cursorart-tools-theme-hint";
+
+            const isCursorArtTheme = () => {
+                const ap = window.siyuan?.config?.appearance;
+                if (!ap) {
+                    return false;
+                }
+                const dark = Number(ap.mode) === 1;
+                const name = dark ? ap.themeDark : ap.themeLight;
+                return name === THEME_ID;
+            };
+
+            let layoutFeaturesOn = false;
+            let themeWatchTimer = 0;
+            let themeWsBound = false;
+
+            const enableLayoutFeatures = () => {
+                if (!layoutFeaturesOn) {
+                    layoutFeaturesOn = true;
+                    startTopbarHeight();
+                } else {
+                    applyTopbarHeight();
+                }
+                mountAllDocks();
+            };
+
+            const disableLayoutFeatures = () => {
+                if (!layoutFeaturesOn && !document.getElementById("dockLeft")?.classList.contains(TOP_CLASS)) {
+                    document.documentElement.style.removeProperty("--starter-topbar-height");
+                    return;
+                }
+                layoutFeaturesOn = false;
+                stopTopbarHeight();
+                sides.forEach(unmountOne);
+            };
+
+            const syncLayoutFeaturesToTheme = () => {
+                if (isCursorArtTheme()) {
+                    enableLayoutFeatures();
+                    return true;
+                }
+                disableLayoutFeatures();
+                return false;
+            };
+
+            const hintThemeOnce = () => {
+                if (isCursorArtTheme()) {
+                    return;
+                }
+                try {
+                    if (window.sessionStorage?.getItem(THEME_HINT_KEY) === "1") {
+                        return;
+                    }
+                    window.sessionStorage?.setItem(THEME_HINT_KEY, "1");
+                } catch {
+                    /* ignore */
+                }
+                try {
+                    showMessage(
+                        "侧栏顶工具条与标题栏高度仅在主题「cursor极简」启用时生效；请同时安装并切换该主题。",
+                        7000,
+                        "info"
+                    );
+                } catch {
+                    /* showMessage 不可用时忽略 */
+                }
+            };
+
+            const onThemeRelatedWs = (event) => {
+                const cmd = event?.detail?.cmd || event?.detail?.data?.cmd;
+                if (!cmd) {
+                    syncLayoutFeaturesToTheme();
+                    return;
+                }
+                const s = String(cmd);
+                if (/appearance|theme|setAppearance|reloadTheme/i.test(s)) {
+                    syncLayoutFeaturesToTheme();
+                }
+            };
+
+            const startThemeWatch = () => {
+                syncLayoutFeaturesToTheme();
+                hintThemeOnce();
+                if (!themeWatchTimer) {
+                    themeWatchTimer = window.setInterval(() => {
+                        syncLayoutFeaturesToTheme();
+                    }, 2000);
+                }
+                const plugin = window.__cursorArtToolsPlugin;
+                if (plugin?.eventBus?.on && !themeWsBound) {
+                    plugin.eventBus.on("ws-main", onThemeRelatedWs);
+                    themeWsBound = true;
+                }
+            };
+
+            const stopThemeWatch = () => {
+                if (themeWatchTimer) {
+                    window.clearInterval(themeWatchTimer);
+                    themeWatchTimer = 0;
+                }
+                const plugin = window.__cursorArtToolsPlugin;
+                if (plugin?.eventBus?.off && themeWsBound) {
+                    plugin.eventBus.off("ws-main", onThemeRelatedWs);
+                    themeWsBound = false;
+                }
+            };
 
             const sides = [
                 {
@@ -3863,7 +3972,7 @@ module.exports = class CursorArtTools extends Plugin {
             const tryMount = async () => {
                 await initConfig();
                 await seedOfficialDefaultsIfNeeded();
-                applyTopbarHeight();
+                syncLayoutFeaturesToTheme();
                 applyHiddenDockTypes();
                 startOutlineFollow();
                 startPathBreadcrumb();
@@ -3873,7 +3982,7 @@ module.exports = class CursorArtTools extends Plugin {
                 applyRecentDocs();
                 applyFavoriteDocs();
                 startDocIconWatch();
-                const okDocks = mountAllDocks();
+                const okDocks = !isCursorArtTheme() || mountAllDocks();
                 const okToggles = mountToggles();
                 const okMenu = bindPluginsMenu();
                 const okHeart = mountDonateHeart();
@@ -3884,10 +3993,13 @@ module.exports = class CursorArtTools extends Plugin {
                     applyHiddenDockTypes();
                     schedulePathBars();
                     startDocIconWatch();
-                    const d = mountAllDocks();
+                    if (isCursorArtTheme()) {
+                        mountAllDocks();
+                    }
                     const t = mountToggles();
                     const m = bindPluginsMenu();
                     const h = mountDonateHeart();
+                    const d = !isCursorArtTheme() || document.getElementById("dockLeft")?.dataset?.starterMounted === "1";
                     if (d && t && m && h && docIconWatchObs) {
                         obs.disconnect();
                     }
@@ -3898,11 +4010,13 @@ module.exports = class CursorArtTools extends Plugin {
 
             document.addEventListener("click", rememberDockClick, true);
             document.addEventListener("click", suppressActiveDockCollapse, false);
-            startTopbarHeight();
+            startThemeWatch();
 
             window.destroyTheme = async () => {
                 document.removeEventListener("click", rememberDockClick, true);
                 document.removeEventListener("click", suppressActiveDockCollapse, false);
+                stopThemeWatch();
+                disableLayoutFeatures();
                 stopTopbarHeight();
                 stopOutlineFollow();
                 stopPathBreadcrumb();
@@ -3945,6 +4059,7 @@ module.exports = class CursorArtTools extends Plugin {
             }
         } finally {
             delete window.destroyTheme;
+            delete window.__cursorArtToolsPlugin;
             window.__cursorArtToolsLoaded = false;
         }
     }
