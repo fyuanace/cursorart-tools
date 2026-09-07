@@ -2,8 +2,8 @@
   "name": "cursorart-tools",
   "author": "fyuan",
   "url": "https://github.com/fyuanace/cursorart-tools",
-  "version": "1.0.2",
-  "minAppVersion": "3.1.0",
+  "version": "1.2.0",
+  "minAppVersion": "3.1.27",
   "backends": [
     "all"
   ],
@@ -15,13 +15,17 @@
     "zh-CN": "cursor极简工具"
   },
   "description": {
-    "default": "Companion for the cursorart theme: dock layout helpers, settings, favorites, recents, and like button.",
-    "zh-CN": "cursor极简主题配套插件：侧栏顶栏布局辅助、主题设置、收藏与最近打开、喜欢按钮等交互能力。"
+    "default": "cursorart companion plus slash filter, image DPI, CJK spacing, child-nav inject, default icons, and config sync.",
+    "zh-CN": "cursor极简配套插件：侧栏布局、样式、子文档导航、图片、输入者、斜杠菜单、配置同步、收藏与喜欢按钮。请禁用 fhelper 以免重复植入。"
   },
   "readme": {
     "default": "README.md",
     "zh-CN": "README_zh_CN.md"
   },
+  "i18n": [
+    "zh_CN",
+    "en_US"
+  ],
   "icon": "icon.png",
   "preview": "preview.png",
   "funding": {
@@ -37,6 +41,8 @@
     "cursorart",
     "theme",
     "极简",
-    "favorites"
+    "favorites",
+    "slash",
+    "fhelper"
   ]
 }

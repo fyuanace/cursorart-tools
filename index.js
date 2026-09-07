@@ -1,4 +1,53 @@
-const {Plugin, showMessage} = require("siyuan");
+const {Plugin, showMessage, confirm} = require("siyuan");
+const fs = require("fs");
+const path = require("path");
+
+/**
+ * 思源只包装 index.js：这里的 require("siyuan") 可用，但 Node 直接加载旁路文件时
+ * 解析不到虚拟模块 siyuan。因此读文件，用本插件的 require 执行。
+ */
+const loadEditorFeatures = () => {
+    const dataDir = window.siyuan?.config?.system?.dataDir;
+    if (!dataDir) {
+        throw new Error("cursorart-tools: dataDir unavailable");
+    }
+    const pluginDir = path.join(dataDir, "plugins", "cursorart-tools");
+    const filename = path.join(pluginDir, "editor-features.js");
+    const code = fs.readFileSync(filename, "utf8");
+    const mod = {exports: {}};
+    const run = new Function(
+        "exports",
+        "require",
+        "module",
+        "__filename",
+        "__dirname",
+        `${code}\n//# sourceURL=plugin://cursorart-tools/editor-features.js`
+    );
+    run(mod.exports, require, mod, filename, pluginDir);
+    return mod.exports;
+};
+
+const editorFeatureStubs = {
+    installEditorFeatures: async () => null,
+    uninstallEditorFeatures: () => {},
+    createDefaultEditorConfig: () => ({}),
+    normalizeEditorConfig: (cfg) => (cfg && typeof cfg === "object" ? cfg : {}),
+};
+
+let editorFeatures;
+try {
+    editorFeatures = loadEditorFeatures();
+} catch (err) {
+    console.error("cursorart-tools: cannot load editor-features", err);
+    editorFeatures = editorFeatureStubs;
+}
+
+const {
+    installEditorFeatures,
+    uninstallEditorFeatures,
+    createDefaultEditorConfig,
+    normalizeEditorConfig,
+} = editorFeatures;
 
 module.exports = class CursorArtTools extends Plugin {
     async onload() {
@@ -10,12 +59,29 @@ module.exports = class CursorArtTools extends Plugin {
         this._startFeature();
     }
 
+    openSetting() {
+        if (typeof this._openSettingsDialog === "function") {
+            this._openSettingsDialog();
+        }
+    }
+
+    updateProtyleToolbar(toolbar) {
+        if (this._editorFeatures?.updateProtyleToolbar) {
+            return this._editorFeatures.updateProtyleToolbar(toolbar);
+        }
+        return toolbar;
+    }
+
+    async onLayoutReady() {
+        this._editorFeatures?.onLayoutReady?.();
+    }
+
     _startFeature() {
         /**
          * cursor极简 —
          * 1) 左/右 dock 图标挂到对应侧栏顶部横条
          * 2) 顶栏左右侧栏显隐：左在「思源」标题后，右在窗口最小化左侧
-         * 3) 主题设置（入口同插件：#barPlugins 菜单 → cursor极简 设置）
+         * 3) 主题设置（顶栏插件菜单 → cursor极简工具，走 Plugin.openSetting）
          * 4) 已选中 dock 图标再点不收起侧栏（仅拦 UI click，不改 toggleModel）
          * 5) 正文滚动/光标位置同步右侧大纲当前项（复用官方 Outline.setCurrent）
          * 6) 面包屑改为文档路径（笔记本/文件夹/文档），不再显示页内块层级
@@ -38,8 +104,10 @@ module.exports = class CursorArtTools extends Plugin {
             const LEGACY_CONFIG_PATH = "/data/storage/theme/starter/config.json";
             const LEGACY_STORAGE_KEY = "starter-theme-config";
             const HIDE_STYLE_ID = "starterHideDockStyle";
+            const SETTINGS_STYLE_ID = "cursorart-tools-setting-css";
+            const FEATURE_STYLE_ID = "cursorart-tools-feature-css";
             const DIALOG_ID = "starterSettingsDialog";
-            const MENU_ITEM_ID = "starter-theme-settings";
+            const PLUGIN_VERSION = "1.2.0";
             const DONATE_HEART_ID = "starterDonateHeart";
             const DONATE_FLAG_KEY = "cursorart-donate-clicked";
             const DONATE_HOST_KEY = "cursorart-donate-clicked-host";
@@ -60,22 +128,23 @@ module.exports = class CursorArtTools extends Plugin {
             let themeWatchTimer = 0;
             let themeWsBound = false;
 
-            const enableLayoutFeatures = () => {
-                layoutFeaturesOn = true;
-                mountAllDocks();
-            };
-
-            const disableLayoutFeatures = () => {
-                layoutFeaturesOn = false;
-                sides.forEach(unmountOne);
+            const applyAdaptiveTopbar = () => {
+                const themeOn = isCursorArtTheme();
+                const adaptive = themeOn && config.adaptiveTopbarHeight !== false;
+                document.documentElement.classList.toggle("starter-adaptive-topbar", adaptive);
+                document.documentElement.classList.toggle("starter-default-topbar", themeOn && !adaptive);
             };
 
             const syncLayoutFeaturesToTheme = () => {
-                if (isCursorArtTheme()) {
-                    enableLayoutFeatures();
+                applyAdaptiveTopbar();
+                applyHiddenDockTypes();
+                if (isCursorArtTheme() && config.dockInContent !== false) {
+                    layoutFeaturesOn = true;
+                    mountAllDocks();
                     return true;
                 }
-                disableLayoutFeatures();
+                layoutFeaturesOn = false;
+                sides.forEach(unmountOne);
                 return false;
             };
 
@@ -93,7 +162,7 @@ module.exports = class CursorArtTools extends Plugin {
                 }
                 try {
                     showMessage(
-                        "侧栏顶工具条仅在主题「cursor极简」启用时生效；请同时安装并切换该主题。",
+                        "侧栏布局、标题栏高度与隐藏侧栏工具仅在主题「cursor极简」启用时生效。",
                         7000,
                         "info"
                     );
@@ -158,9 +227,10 @@ module.exports = class CursorArtTools extends Plugin {
                 },
             ];
 
-            const DEFAULT_BLOCK_LH = 1.625;
+            const DEFAULT_BLOCK_LH = 1.65;
             const DEFAULT_RECENT_MAX = 8;
             const DEFAULT_FAV_MAX = 8;
+            const FACTORY_HIDDEN_DOCK_TYPES = ["inbox", "bookmark", "agentChat"];
             const clampBlockLh = (n) => {
                 const x = Number(n);
                 if (!Number.isFinite(x)) {
@@ -175,7 +245,7 @@ module.exports = class CursorArtTools extends Plugin {
                 }
                 return Math.min(32, Math.max(0, Math.round(x)));
             };
-            const listShowFromParsed = (explicit, maxRaw, defaultMax) => {
+            const listShowFromParsed = (explicit, maxRaw, defaultMax, defaultShow) => {
                 const max = clampListMax(maxRaw ?? defaultMax);
                 if (typeof explicit === "boolean") {
                     return {show: explicit, max: max > 0 ? max : defaultMax};
@@ -183,7 +253,7 @@ module.exports = class CursorArtTools extends Plugin {
                 if (max <= 0) {
                     return {show: false, max: defaultMax};
                 }
-                return {show: true, max};
+                return {show: typeof defaultShow === "boolean" ? defaultShow : true, max};
             };
 
             const MAX_FAVORITE_DOCS = 100;
@@ -211,23 +281,32 @@ module.exports = class CursorArtTools extends Plugin {
                 return out;
             };
 
-            /** @type {{ hiddenDockTypes: string[], customDocRefStyle: boolean, plainTableHead: boolean, blockLineHeight: number, hideNotebooks: boolean, hideTabNewDoc: boolean, hideTabSwitch: boolean, showRecentDocs: boolean, showFavoriteDocs: boolean, recentDocsMax: number, favoriteDocsMax: number, favoriteDocs: {id: string, title: string, icon: string}[], recentDocs: {id: string, title: string, icon: string}[], seededOfficialDefaults: boolean }} */
-            let config = {
-                hiddenDockTypes: [],
-                customDocRefStyle: true,
+            const boolFrom = (parsed, key, fallback) =>
+                typeof parsed?.[key] === "boolean" ? parsed[key] : fallback;
+
+            const createFactoryConfig = () => ({
+                hiddenDockTypes: [...FACTORY_HIDDEN_DOCK_TYPES],
+                adaptiveTopbarHeight: true,
+                dockInContent: true,
+                customDocRefStyle: false,
                 plainTableHead: true,
                 blockLineHeight: DEFAULT_BLOCK_LH,
                 hideNotebooks: false,
-                hideTabNewDoc: false,
-                hideTabSwitch: false,
-                showRecentDocs: true,
+                hideTabNewDoc: true,
+                hideTabSwitch: true,
+                showRecentDocs: false,
                 showFavoriteDocs: true,
                 recentDocsMax: DEFAULT_RECENT_MAX,
                 favoriteDocsMax: DEFAULT_FAV_MAX,
                 favoriteDocs: [],
                 recentDocs: [],
                 seededOfficialDefaults: false,
-            };
+                ...createDefaultEditorConfig(),
+                editorFeaturesMigrated: true,
+            });
+
+            /** @type {object} */
+            let config = createFactoryConfig();
             let applyDocRefFeature = () => {};
             let applyStyleFeatures = () => {};
             let applyHideNotebooks = () => {};
@@ -235,14 +314,6 @@ module.exports = class CursorArtTools extends Plugin {
             let applyFavoriteDocs = () => {};
             let applySvgDefaultIcons = () => {};
             let syncFavButtons = () => {};
-            /** 设置对话框拖动时的临时条数/显隐；null 表示用已保存配置 */
-            let previewRecentMax = null;
-            let previewFavoriteMax = null;
-            let previewShowRecentDocs = null;
-            let previewShowFavoriteDocs = null;
-            /** 设置对话框里对官方 useSVGDefaultIcon / hideStatusBar 的预览；null 表示用思源当前值 */
-            let previewUseSvgDefault = null;
-            let previewHideStatusBar = null;
 
             const supportsOfficialSvgDefault = () =>
                 typeof window.siyuan?.config?.fileTree?.useSVGDefaultIcon === "boolean";
@@ -250,7 +321,7 @@ module.exports = class CursorArtTools extends Plugin {
             const officialSvgDefaultOn = () => window.siyuan?.config?.fileTree?.useSVGDefaultIcon === true;
 
             const useSvgDefaultIcon = () =>
-                (previewUseSvgDefault ?? window.siyuan?.config?.fileTree?.useSVGDefaultIcon) === true;
+                window.siyuan?.config?.fileTree?.useSVGDefaultIcon === true;
 
             const supportsOfficialHideStatusBar = () =>
                 typeof window.siyuan?.config?.appearance?.hideStatusBar === "boolean";
@@ -264,26 +335,31 @@ module.exports = class CursorArtTools extends Plugin {
             };
 
             const normalizeConfig = (parsed) => {
+                const factory = createFactoryConfig();
                 const recentMeta = listShowFromParsed(
                     parsed?.showRecentDocs,
                     parsed?.recentDocsMax,
-                    DEFAULT_RECENT_MAX
+                    factory.recentDocsMax,
+                    factory.showRecentDocs
                 );
                 const favMeta = listShowFromParsed(
                     parsed?.showFavoriteDocs,
                     parsed?.favoriteDocsMax,
-                    DEFAULT_FAV_MAX
+                    factory.favoriteDocsMax,
+                    factory.showFavoriteDocs
                 );
                 return {
                     hiddenDockTypes: Array.isArray(parsed?.hiddenDockTypes)
                         ? parsed.hiddenDockTypes.filter((t) => typeof t === "string")
-                        : [],
-                    customDocRefStyle: parsed?.customDocRefStyle !== false,
-                    plainTableHead: parsed?.plainTableHead !== false,
-                    blockLineHeight: clampBlockLh(parsed?.blockLineHeight ?? DEFAULT_BLOCK_LH),
-                    hideNotebooks: parsed?.hideNotebooks === true,
-                    hideTabNewDoc: parsed?.hideTabNewDoc === true,
-                    hideTabSwitch: parsed?.hideTabSwitch === true,
+                        : [...factory.hiddenDockTypes],
+                    adaptiveTopbarHeight: boolFrom(parsed, "adaptiveTopbarHeight", factory.adaptiveTopbarHeight),
+                    dockInContent: boolFrom(parsed, "dockInContent", factory.dockInContent),
+                    customDocRefStyle: boolFrom(parsed, "customDocRefStyle", factory.customDocRefStyle),
+                    plainTableHead: boolFrom(parsed, "plainTableHead", factory.plainTableHead),
+                    blockLineHeight: clampBlockLh(parsed?.blockLineHeight ?? factory.blockLineHeight),
+                    hideNotebooks: boolFrom(parsed, "hideNotebooks", factory.hideNotebooks),
+                    hideTabNewDoc: boolFrom(parsed, "hideTabNewDoc", factory.hideTabNewDoc),
+                    hideTabSwitch: boolFrom(parsed, "hideTabSwitch", factory.hideTabSwitch),
                     showRecentDocs: recentMeta.show,
                     showFavoriteDocs: favMeta.show,
                     recentDocsMax: recentMeta.max,
@@ -291,6 +367,10 @@ module.exports = class CursorArtTools extends Plugin {
                     favoriteDocs: normalizeFavoriteDocs(parsed?.favoriteDocs),
                     recentDocs: normalizeFavoriteDocs(parsed?.recentDocs).slice(0, recentMeta.max),
                     seededOfficialDefaults: parsed?.seededOfficialDefaults === true,
+                    ...normalizeEditorConfig(parsed),
+                    editorFeaturesMigrated: typeof parsed?.editorFeaturesMigrated === "boolean"
+                        ? parsed.editorFeaturesMigrated
+                        : factory.editorFeaturesMigrated,
                 };
             };
 
@@ -355,6 +435,15 @@ module.exports = class CursorArtTools extends Plugin {
                 }
             };
 
+            const pluginHost = window.__cursorArtToolsPlugin;
+            if (pluginHost) {
+                pluginHost.getEditorConfig = () => normalizeEditorConfig(config);
+                pluginHost.patchEditorConfig = (editorCfg) => saveConfigToFile({
+                    ...normalizeEditorConfig(editorCfg),
+                    editorFeaturesMigrated: true,
+                });
+            }
+
             const initConfig = async () => {
                 const fromFile = await loadConfigFromFile(CONFIG_PATH);
                 if (fromFile) {
@@ -373,7 +462,8 @@ module.exports = class CursorArtTools extends Plugin {
                     await saveConfigToFile(legacy);
                     return;
                 }
-                config = normalizeConfig({});
+                config = createFactoryConfig();
+                await saveConfigToFile(config);
             };
 
             const getDock = (layoutKey) => window.siyuan?.layout?.[layoutKey];
@@ -504,6 +594,10 @@ module.exports = class CursorArtTools extends Plugin {
                     style.id = HIDE_STYLE_ID;
                     document.head.appendChild(style);
                 }
+                if (!isCursorArtTheme()) {
+                    style.textContent = "";
+                    return;
+                }
                 const rules = config.hiddenDockTypes
                     .map((type) => {
                         const safe = type.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -511,6 +605,416 @@ module.exports = class CursorArtTools extends Plugin {
                     })
                     .join("");
                 style.textContent = rules;
+            };
+
+            const ensureSettingStyles = () => {
+                let style = document.getElementById(SETTINGS_STYLE_ID);
+                if (!style) {
+                    style = document.createElement("style");
+                    style.id = SETTINGS_STYLE_ID;
+                    document.head.appendChild(style);
+                }
+                style.textContent = `
+#starterSettingsDialog.b3-dialog {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    z-index: 100000 !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+}
+#starterSettingsDialog .b3-dialog__scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-color: var(--b3-mask-background);
+}
+#starterSettingsDialog .starter-settings-window {
+    position: relative;
+    z-index: 1;
+    width: min(640px, 92vw);
+    height: 80vh;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    overflow: hidden;
+    background-color: var(--b3-theme-surface);
+    box-shadow: var(--b3-dialog-shadow);
+}
+#starterSettingsDialog .b3-dialog__header {
+    flex-shrink: 0;
+}
+#starterSettingsDialog .b3-dialog__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+#starterSettingsDialog .starter-settings-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+}
+#starterSettingsDialog .starter-settings-panes {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 16px 16px;
+}
+#starterSettingsDialog [data-starter-pane] {
+    display: none;
+    flex-direction: column;
+    gap: 24px;
+    width: 100%;
+}
+#starterSettingsDialog [data-starter-pane].starter-settings-pane--active {
+    display: flex;
+}
+#starterSettingsDialog .starter-settings-tabs {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+    padding: 12px 16px 0;
+    border-bottom: 1px solid var(--b3-border-color);
+}
+#starterSettingsDialog .starter-settings-tab {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-radius: 8px 8px 0 0;
+    padding: 8px 14px;
+    cursor: pointer;
+    color: var(--b3-theme-on-surface);
+    font: inherit;
+    font-size: 14px;
+    opacity: 0.72;
+}
+#starterSettingsDialog .starter-settings-tab:hover {
+    opacity: 1;
+    background: var(--b3-list-hover);
+}
+#starterSettingsDialog .starter-settings-tab--active {
+    opacity: 1;
+    color: var(--b3-theme-primary);
+    box-shadow: inset 0 -2px 0 var(--b3-theme-primary);
+}
+#starterSettingsDialog .starter-settings-section {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--b3-theme-surface);
+}
+#starterSettingsDialog .starter-settings-section__title {
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+    background: var(--b3-theme-background);
+    border-bottom: 1px solid var(--b3-border-color);
+}
+#starterSettingsDialog .starter-settings-section__desc {
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--b3-theme-on-surface-light);
+    background: var(--b3-theme-background);
+    border-bottom: 1px solid var(--b3-border-color);
+    white-space: pre-wrap;
+}
+#starterSettingsDialog .starter-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 14px;
+}
+#starterSettingsDialog .starter-settings-row + .starter-settings-row {
+    border-top: 1px solid var(--b3-border-color);
+}
+#starterSettingsDialog .starter-settings-text {
+    min-width: 0;
+    flex: 1;
+}
+#starterSettingsDialog .starter-settings-title {
+    font-size: 14px;
+    color: var(--b3-theme-on-background);
+    line-height: 1.4;
+}
+#starterSettingsDialog .starter-settings-desc {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface);
+    opacity: 0.8;
+    line-height: 1.45;
+    word-break: break-word;
+}
+#starterSettingsDialog .starter-settings-action {
+    flex-shrink: 0;
+}
+#starterSettingsDialog .starter-settings-action .b3-button {
+    margin: 0;
+}
+#starterSettingsDialog .starter-settings-empty {
+    padding: 28px 12px;
+    text-align: center;
+    color: var(--b3-theme-on-surface);
+    opacity: 0.7;
+}
+#starterSettingsDialog .starter-settings-path__val {
+    display: block;
+    word-break: break-all;
+    user-select: text;
+}
+#starterSettingsDialog .starter-settings-footer {
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--b3-border-color);
+}
+#starterSettingsDialog .starter-settings-lh {
+    align-items: center;
+    flex-shrink: 0;
+    gap: 10px;
+    min-width: 160px;
+}
+#starterSettingsDialog .starter-settings-lh .b3-slider {
+    width: 120px;
+}
+#starterSettingsDialog .b3-slider:disabled {
+    opacity: 0.4;
+}
+#starterSettingsDialog .starter-settings-lh__val {
+    min-width: 2.6em;
+    color: var(--b3-theme-on-surface);
+    font-variant-numeric: tabular-nums;
+}
+#starterSettingsDialog .starter-settings-notice {
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--b3-theme-on-surface);
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 10px;
+}
+#starterSettingsDialog .starter-settings-pane--locked {
+    opacity: 0.55;
+    pointer-events: none;
+}
+#starterSettingsDialog .starter-settings-mount {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    width: 100%;
+}
+`;
+            };
+
+            const ensureFeatureStyles = () => {
+                let style = document.getElementById(FEATURE_STYLE_ID);
+                if (!style) {
+                    style = document.createElement("style");
+                    style.id = FEATURE_STYLE_ID;
+                    document.head.appendChild(style);
+                }
+                style.textContent = `
+html.starter-hide-tab-new #layouts .layout__center .layout-tab-bar--readonly .block__icon[data-type="new"],
+html.starter-hide-tab-more #layouts .layout__center .layout-tab-bar--readonly .block__icon[data-type="more"] {
+    display: none !important;
+}
+html.starter-hide-tab-new.starter-hide-tab-more #layouts .layout__center .layout-tab-bar--readonly {
+    min-width: 24px;
+}
+html.starter-hide-notebook .sy__file li[data-type="navigation-root"] {
+    display: none !important;
+}
+html.starter-hide-notebook .sy__file > ul.b3-list.fn__flex-column {
+    display: none !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > li[data-type="navigation-file"] {
+    --file-toggle-width: 18px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
+    padding-left: 0 !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > li[data-type="navigation-file"] {
+    --file-toggle-width: 36px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
+    padding-left: 18px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > li[data-type="navigation-file"] {
+    --file-toggle-width: 54px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
+    padding-left: 36px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > li[data-type="navigation-file"] {
+    --file-toggle-width: 72px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
+    padding-left: 54px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > li[data-type="navigation-file"] {
+    --file-toggle-width: 90px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
+    padding-left: 72px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul > li[data-type="navigation-file"] {
+    --file-toggle-width: 108px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
+    padding-left: 90px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul > ul > li[data-type="navigation-file"] {
+    --file-toggle-width: 126px !important;
+}
+html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
+    padding-left: 108px !important;
+}
+#layouts .sy__file {
+    overflow: hidden;
+}
+#layouts .sy__file > .starter-file-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+#layouts .sy__file > .starter-file-scroll > .fn__flex-1 {
+    flex: 0 0 auto;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+}
+#layouts .sy__file .starter-recent-docs,
+#layouts .sy__file .starter-fav-docs {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    max-height: none;
+    padding-bottom: 10px;
+}
+#layouts .sy__file .starter-recent-docs__head,
+#layouts .sy__file .starter-fav-docs__head {
+    flex-shrink: 0;
+    cursor: pointer;
+}
+#layouts .sy__file .starter-recent-docs__head .b3-list-item__text,
+#layouts .sy__file .starter-fav-docs__head .b3-list-item__text {
+    color: var(--b3-theme-on-surface);
+    font-size: 12px;
+}
+#layouts .sy__file .starter-recent-docs__list,
+#layouts .sy__file .starter-fav-docs__list {
+    overflow: visible;
+}
+#layouts .sy__file .starter-recent-docs.starter-recent-docs--collapsed .starter-recent-docs__list,
+#layouts .sy__file .starter-fav-docs.starter-fav-docs--collapsed .starter-fav-docs__list {
+    display: none;
+}
+#layouts .sy__file .starter-recent-docs__item--current,
+#layouts .sy__file .starter-fav-docs__item--current {
+    background-color: var(--b3-list-hover);
+}
+#layouts .sy__file .starter-recent-docs__empty .b3-list-item__text,
+#layouts .sy__file .starter-fav-docs__more .b3-list-item__text {
+    color: var(--b3-theme-on-surface-light);
+}
+#layouts .sy__file [data-starter-recent-doc],
+#layouts .sy__file [data-starter-fav-doc],
+#layouts .sy__file .starter-fav-docs__more {
+    cursor: pointer;
+}
+#layouts .layout__center .protyle-breadcrumb > .starter-fav-btn {
+    flex-shrink: 0;
+}
+html.starter-plain-table-head .b3-typography table thead th,
+html.starter-plain-table-head .protyle-wysiwyg table thead th,
+html.starter-plain-table-head .protyle-wysiwyg [data-node-id] table thead th {
+    font-weight: 400 !important;
+}
+html.starter-plain-table-head .b3-typography table thead th *:not(strong):not(b):not([data-type~="strong"]),
+html.starter-plain-table-head .protyle-wysiwyg table thead th *:not(strong):not(b):not([data-type~="strong"]) {
+    font-weight: inherit !important;
+}
+html.starter-block-line-height .protyle-wysiwyg [data-node-id].p,
+html.starter-block-line-height .b3-typography p {
+    line-height: var(--starter-block-line-height);
+}
+html.starter-custom-doc-ref .b3-typography span[data-type~="block-ref"][data-id]:not(.av__celltext):not([custom-fhelper-child-nav] *),
+html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="block-ref"][data-id]:not(.av__celltext):not([custom-fhelper-child-nav] *) {
+    font-weight: 700;
+    color: var(--b3-theme-on-background);
+    text-decoration: none;
+    border-bottom: none;
+}
+`;
+            };
+
+            const getConfigAbsPath = () => {
+                const ws = String(window.siyuan?.config?.system?.workspaceDir || "").replace(/[\\/]+$/, "");
+                if (!ws) {
+                    return "";
+                }
+                const sep = ws.includes("\\") ? "\\" : "/";
+                return ws + sep + CONFIG_PATH.replace(/^\//, "").split("/").join(sep);
+            };
+
+            const openConfigInFolder = () => {
+                const abs = getConfigAbsPath();
+                try {
+                    const req = window.require;
+                    if (typeof req === "function" && abs) {
+                        const shell = req("electron").shell;
+                        if (shell && typeof shell.showItemInFolder === "function") {
+                            shell.showItemInFolder(abs);
+                            return;
+                        }
+                    }
+                } catch {
+                    /* 非 Electron 或无 shell */
+                }
+                const copied = abs || CONFIG_PATH;
+                const done = () => {
+                    try {
+                        showMessage(`已复制配置路径：${copied}`, 4000, "info");
+                    } catch {
+                        /* ignore */
+                    }
+                };
+                if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(copied).then(done, done);
+                    return;
+                }
+                done();
+            };
+
+            const loadThemeVersion = async () => {
+                try {
+                    const res = await fetch("/appearance/themes/cursorart/theme.json", {cache: "no-store"});
+                    if (!res.ok) {
+                        return "";
+                    }
+                    const parsed = await res.json();
+                    return typeof parsed?.version === "string" ? parsed.version : "";
+                } catch {
+                    return "";
+                }
             };
 
             const listDockTools = () => {
@@ -538,9 +1042,11 @@ module.exports = class CursorArtTools extends Plugin {
 
             const openSettingsDialog = () => {
                 closeSettingsDialog();
+                ensureSettingStyles();
+                pluginHost?._editorFeatures?.ensureSettingStyles?.();
                 const tools = listDockTools();
-                const cancelText = window.siyuan?.languages?.cancel || "取消";
-                const saveText = window.siyuan?.languages?.save || "保存";
+                const themeOn = isCursorArtTheme();
+                const editor = pluginHost?._editorFeatures;
 
                 const settingRow = (title, desc, controlHtml) => `<div class="starter-settings-row">
           <div class="starter-settings-text">
@@ -554,8 +1060,8 @@ module.exports = class CursorArtTools extends Plugin {
           ${desc ? `<div class="starter-settings-section__desc">${desc}</div>` : ""}
           ${rowsHtml}
         </div>`;
-                const switchHtml = (attr, checked) =>
-                    `<input class="b3-switch fn__flex-center" type="checkbox" ${attr}${checked}>`;
+                const switchHtml = (attr, checked, disabled) =>
+                    `<input class="b3-switch fn__flex-center" type="checkbox" ${attr}${checked}${disabled ? " disabled" : ""}>`;
                 const sliderHtml = (attr, min, max, step, value, valAttr) =>
                     `<div class="fn__flex starter-settings-lh">
           <input class="b3-slider" type="range" min="${min}" max="${max}" step="${step}" value="${value}" ${attr}>
@@ -569,11 +1075,17 @@ module.exports = class CursorArtTools extends Plugin {
                               return settingRow(
                                   label,
                                   `data-type: ${type}`,
-                                  switchHtml(`data-starter-hide-type="${type}"`, checked)
+                                  switchHtml(`data-starter-hide-type="${type}"`, checked, !themeOn)
                               );
                           })
                           .join("")
                     : `<div class="starter-settings-empty">未检测到侧栏工具图标，请稍后再试。</div>`;
+                const adaptiveChecked = config.adaptiveTopbarHeight !== false ? " checked" : "";
+                const dockInContentChecked = config.dockInContent !== false ? " checked" : "";
+                const dockNotice = themeOn
+                    ? ""
+                    : `<div class="starter-settings-notice">当前不是 cursor极简 主题，本页布局功能不可用。请在「设置 → 外观」中把亮色/暗色主题都换成 cursor极简。</div>`;
+                const dockLockClass = themeOn ? "" : " starter-settings-pane--locked";
 
                 const docRefChecked = config.customDocRefStyle !== false ? " checked" : "";
                 const tableHeadChecked = config.plainTableHead !== false ? " checked" : "";
@@ -616,29 +1128,38 @@ module.exports = class CursorArtTools extends Plugin {
               <div class="starter-settings-tabs">
                 <button type="button" class="starter-settings-tab starter-settings-tab--active" data-starter-dlg="tab" data-starter-tab="dock">侧栏</button>
                 <button type="button" class="starter-settings-tab" data-starter-dlg="tab" data-starter-tab="style">样式</button>
+                <button type="button" class="starter-settings-tab" data-starter-dlg="tab" data-starter-tab="edit">编辑</button>
+                <button type="button" class="starter-settings-tab" data-starter-dlg="tab" data-starter-tab="slash">斜杠菜单</button>
+                <button type="button" class="starter-settings-tab" data-starter-dlg="tab" data-starter-tab="sync">配置同步</button>
+                <button type="button" class="starter-settings-tab" data-starter-dlg="tab" data-starter-tab="about">关于</button>
               </div>
               <div class="starter-settings-panes">
               <div data-starter-pane="dock" class="starter-settings-pane--active">
+                ${dockNotice}
+                <div class="${dockLockClass.trim()}">
+                ${settingSection(
+                    "布局",
+                    "仅在当前主题为 cursor极简 时生效",
+                    settingRow(
+                        "开启自适应标题栏高度",
+                        "按屏幕缩放把标题栏与文档 Tab 压到约 55 设备像素",
+                        switchHtml("data-starter-adaptive-topbar", adaptiveChecked, !themeOn)
+                    ) +
+                    settingRow(
+                        "将侧边工具按钮放入内容视图",
+                        "把左右 dock 图标移到侧栏内容区顶部横条",
+                        switchHtml("data-starter-dock-in-content", dockInContentChecked, !themeOn)
+                    )
+                )}
                 ${settingSection(
                     "侧栏工具",
                     "开关打开 = 显示该工具图标；关闭 = 隐藏（仅本主题生效）",
                     rows
                 )}
-                ${settingSection(
-                    "关于",
-                    "",
-                    settingRow(
-                        "复位喜欢按钮",
-                        "清掉本机电脑名下的「已点过爱心」记录，顶栏重新显示爱心。换电脑或电脑名变化也会再出现",
-                        `<button type="button" class="b3-button b3-button--outline" data-starter-dlg="reset-donate">复位</button>`
-                    ) +
-                    settingRow(
-                        "配置保存位置",
-                        `<span class="starter-settings-path__val">${CONFIG_PATH}</span>`
-                    )
-                )}
+                </div>
               </div>
               <div data-starter-pane="style">
+                <div data-starter-default-icons class="starter-settings-mount"></div>
                 ${settingSection(
                     "文档树",
                     "",
@@ -704,34 +1225,168 @@ module.exports = class CursorArtTools extends Plugin {
                     )
                 )}
               </div>
+              <div data-starter-pane="edit">
+                <div data-starter-edit-mount class="starter-settings-mount"></div>
               </div>
-            </div>
-            <div class="b3-dialog__action starter-settings-footer">
-              <button class="b3-button b3-button--cancel" data-starter-dlg="cancel">${cancelText}</button>
-              <div class="fn__space"></div>
-              <button class="b3-button b3-button--text" data-starter-dlg="save">${saveText}</button>
+              <div data-starter-pane="slash">
+                <div data-starter-slash-mount class="starter-settings-mount"></div>
+              </div>
+              <div data-starter-pane="sync">
+                <div data-starter-sync-mount class="starter-settings-mount"></div>
+              </div>
+              <div data-starter-pane="about">
+                ${settingSection(
+                    "版本",
+                    "",
+                    settingRow(
+                        "插件 cursor极简工具",
+                        `当前版本 ${PLUGIN_VERSION}`,
+                        ""
+                    ) +
+                    settingRow(
+                        "主题 cursor极简",
+                        `<span data-starter-theme-ver>读取中…</span>`,
+                        ""
+                    )
+                )}
+                ${settingSection(
+                    "支持",
+                    "",
+                    settingRow(
+                        "支持作者",
+                        "打开支持页，为作者点赞或赞助",
+                        `<button type="button" class="b3-button b3-button--outline" data-starter-dlg="support-author">打开</button>`
+                    ) +
+                    settingRow(
+                        "复位喜欢按钮",
+                        "清掉本机电脑名下的「已点过爱心」记录，顶栏重新显示爱心。换电脑或电脑名变化也会再出现",
+                        `<button type="button" class="b3-button b3-button--outline" data-starter-dlg="reset-donate">复位</button>`
+                    )
+                )}
+                ${settingSection(
+                    "维护",
+                    "",
+                    settingRow(
+                        "恢复默认配置",
+                        "把侧栏、样式、编辑、斜杠菜单等设置恢复为安装时的默认值；收藏与最近打开名单保留",
+                        `<button type="button" class="b3-button b3-button--outline" data-starter-dlg="restore-defaults">恢复</button>`
+                    ) +
+                    settingRow(
+                        "配置保存位置",
+                        `<span class="starter-settings-path__val">${CONFIG_PATH}</span>`,
+                        `<button type="button" class="b3-button b3-button--outline" data-starter-dlg="open-path">打开</button>`
+                    )
+                )}
+              </div>
+              </div>
             </div>
           </div>
         </div>`;
 
-                const onClose = (revert) => {
-                    previewRecentMax = null;
-                    previewFavoriteMax = null;
-                    previewShowRecentDocs = null;
-                    previewShowFavoriteDocs = null;
-                    previewUseSvgDefault = null;
-                    previewHideStatusBar = null;
-                    if (revert) {
+                if (editor) {
+                    const iconHost = dialog.querySelector("[data-starter-default-icons]");
+                    const editHost = dialog.querySelector("[data-starter-edit-mount]");
+                    const slashHost = dialog.querySelector("[data-starter-slash-mount]");
+                    const syncHost = dialog.querySelector("[data-starter-sync-mount]");
+                    if (iconHost) {
+                        editor.mountDefaultIcons(iconHost);
+                    }
+                    if (editHost) {
+                        editor.mountEditTab(editHost);
+                    }
+                    if (slashHost) {
+                        editor.mountSlashTab(slashHost);
+                    }
+                    if (syncHost) {
+                        editor.mountConfigSyncTab(syncHost);
+                    }
+                } else {
+                    const editHost = dialog.querySelector("[data-starter-edit-mount]");
+                    if (editHost) {
+                        editHost.innerHTML = `<div class="starter-settings-notice">编辑、斜杠菜单与配置同步需禁用 fhelper 后才会启用。</div>`;
+                    }
+                }
+
+                const persistLayout = () => {
+                    if (!themeOn) {
+                        return;
+                    }
+                    const hidden = [];
+                    dialog.querySelectorAll("[data-starter-hide-type]").forEach((input) => {
+                        if (!input.checked) {
+                            hidden.push(input.getAttribute("data-starter-hide-type"));
+                        }
+                    });
+                    const adaptiveTopbarHeight = !!dialog.querySelector("[data-starter-adaptive-topbar]")?.checked;
+                    const dockInContent = !!dialog.querySelector("[data-starter-dock-in-content]")?.checked;
+                    closeIfActiveHidden(hidden);
+                    saveConfigToFile({hiddenDockTypes: hidden, adaptiveTopbarHeight, dockInContent});
+                    syncLayoutFeaturesToTheme();
+                };
+
+                const persistStyle = (extra = {}) => {
+                    const patch = {
+                        customDocRefStyle: !!dialog.querySelector("[data-starter-doc-ref-style]")?.checked,
+                        plainTableHead: !!dialog.querySelector("[data-starter-plain-table-head]")?.checked,
+                        hideNotebooks: !!dialog.querySelector("[data-starter-hide-notebook]")?.checked,
+                        hideTabNewDoc: !!dialog.querySelector("[data-starter-hide-tab-new]")?.checked,
+                        hideTabSwitch: !!dialog.querySelector("[data-starter-hide-tab-switch]")?.checked,
+                        showRecentDocs: !!dialog.querySelector("[data-starter-show-recent]")?.checked,
+                        showFavoriteDocs: !!dialog.querySelector("[data-starter-show-fav]")?.checked,
+                        blockLineHeight: clampBlockLh(dialog.querySelector("[data-starter-block-lh]")?.value),
+                        recentDocsMax: Math.max(1, clampListMax(dialog.querySelector("[data-starter-recent-max]")?.value)),
+                        favoriteDocsMax: Math.max(1, clampListMax(dialog.querySelector("[data-starter-fav-max]")?.value)),
+                        ...extra,
+                    };
+                    return saveConfigToFile(patch).then(() => {
+                        applyDocRefFeature();
                         applyStyleFeatures();
                         applyHideNotebooks();
                         applyRecentDocs();
                         applyFavoriteDocs();
-                        applySvgDefaultIcons();
-                        applyHideStatusBar(officialHideStatusBarOn());
-                    }
+                    });
+                };
+
+                let sliderTimer = 0;
+                const persistStyleSoon = () => {
+                    window.clearTimeout(sliderTimer);
+                    sliderTimer = window.setTimeout(() => persistStyle(), 200);
+                };
+
+                const onClose = () => {
                     dialog.removeEventListener("click", onClick);
                     document.removeEventListener("keydown", onKey, true);
                     closeSettingsDialog();
+                };
+                const restoreFactoryConfig = async () => {
+                    const next = {
+                        ...createFactoryConfig(),
+                        favoriteDocs: config.favoriteDocs,
+                        recentDocs: config.recentDocs,
+                        seededOfficialDefaults: true,
+                        editorFeaturesMigrated: true,
+                    };
+                    await saveConfigToFile(next);
+                    closeIfActiveHidden(config.hiddenDockTypes);
+                    if (supportsOfficialSvgDefault()) {
+                        await persistOfficialSvgDefault(true);
+                    }
+                    if (supportsOfficialHideStatusBar()) {
+                        await persistOfficialHideStatusBar(true);
+                    }
+                    applySvgDefaultIcons();
+                    applyHideStatusBar(officialHideStatusBarOn());
+                    applyHiddenDockTypes();
+                    syncLayoutFeaturesToTheme();
+                    applyDocRefFeature();
+                    applyStyleFeatures();
+                    applyHideNotebooks();
+                    applyRecentDocs();
+                    applyFavoriteDocs();
+                    pluginHost?._editorFeatures?.applyConfig?.(normalizeEditorConfig(config));
+                    showMessage("已恢复默认配置");
+                    onClose();
+                    openSettingsDialog();
                 };
                 const onClick = (e) => {
                     const t = e.target?.closest?.("[data-starter-dlg]");
@@ -739,14 +1394,41 @@ module.exports = class CursorArtTools extends Plugin {
                         return;
                     }
                     const act = t.getAttribute("data-starter-dlg");
-                    if (act === "scrim" || act === "cancel") {
-                        onClose(true);
+                    if (act === "scrim") {
+                        onClose();
                         return;
                     }
                     if (act === "reset-donate") {
                         e.preventDefault();
                         resetDonateHeart();
                         t.textContent = "已复位";
+                        return;
+                    }
+                    if (act === "restore-defaults") {
+                        e.preventDefault();
+                        const title = "恢复默认配置";
+                        const text = "将侧栏、样式、编辑、斜杠菜单等设置恢复为安装时的默认值。收藏与最近打开名单会保留。";
+                        const run = () => {
+                            restoreFactoryConfig().catch((err) => {
+                                console.warn("[cursorart-tools] restore defaults failed", err);
+                                showMessage("恢复默认配置失败");
+                            });
+                        };
+                        if (typeof confirm === "function") {
+                            confirm(title, text, run);
+                        } else if (window.confirm(`${title}\n\n${text}`)) {
+                            run();
+                        }
+                        return;
+                    }
+                    if (act === "support-author") {
+                        e.preventDefault();
+                        openDonateInBrowser(`${DONATE_PAGE_URL}/?from=settings`);
+                        return;
+                    }
+                    if (act === "open-path") {
+                        e.preventDefault();
+                        openConfigInFolder();
                         return;
                     }
                     if (act === "tab") {
@@ -760,102 +1442,42 @@ module.exports = class CursorArtTools extends Plugin {
                                 pane.getAttribute("data-starter-pane") === tab
                             );
                         });
-                        return;
-                    }
-                    if (act === "save") {
-                        const hidden = [];
-                        dialog.querySelectorAll("[data-starter-hide-type]").forEach((input) => {
-                            if (!input.checked) {
-                                hidden.push(input.getAttribute("data-starter-hide-type"));
-                            }
-                        });
-                        const customDocRefStyle = !!dialog.querySelector("[data-starter-doc-ref-style]")?.checked;
-                        const plainTableHead = !!dialog.querySelector("[data-starter-plain-table-head]")?.checked;
-                        const hideNotebooks = !!dialog.querySelector("[data-starter-hide-notebook]")?.checked;
-                        const hideTabNewDoc = !!dialog.querySelector("[data-starter-hide-tab-new]")?.checked;
-                        const hideTabSwitch = !!dialog.querySelector("[data-starter-hide-tab-switch]")?.checked;
-                        const showRecentDocs = !!dialog.querySelector("[data-starter-show-recent]")?.checked;
-                        const showFavoriteDocs = !!dialog.querySelector("[data-starter-show-fav]")?.checked;
-                        const blockLineHeight = clampBlockLh(dialog.querySelector("[data-starter-block-lh]")?.value);
-                        const recentDocsMax = Math.max(1, clampListMax(dialog.querySelector("[data-starter-recent-max]")?.value));
-                        const favoriteDocsMax = Math.max(1, clampListMax(dialog.querySelector("[data-starter-fav-max]")?.value));
-                        closeIfActiveHidden(hidden);
-                        previewRecentMax = null;
-                        previewFavoriteMax = null;
-                        previewShowRecentDocs = null;
-                        previewShowFavoriteDocs = null;
-                        const svgInput = dialog.querySelector("[data-starter-svg-default]");
-                        const statusInput = dialog.querySelector("[data-starter-hide-status]");
-                        const saveSvg = svgInput
-                            ? persistOfficialSvgDefault(!!svgInput.checked)
-                            : Promise.resolve(true);
-                        const saveStatus = statusInput
-                            ? persistOfficialHideStatusBar(!!statusInput.checked)
-                            : Promise.resolve(true);
-                        previewUseSvgDefault = null;
-                        previewHideStatusBar = null;
-                        Promise.all([
-                            saveConfigToFile({
-                                hiddenDockTypes: hidden,
-                                customDocRefStyle,
-                                plainTableHead,
-                                hideNotebooks,
-                                hideTabNewDoc,
-                                hideTabSwitch,
-                                showRecentDocs,
-                                showFavoriteDocs,
-                                blockLineHeight,
-                                recentDocsMax,
-                                favoriteDocsMax,
-                                recentDocs: normalizeFavoriteDocs(config.recentDocs).slice(0, recentDocsMax),
-                            }),
-                            saveSvg,
-                            saveStatus,
-                        ]).then(([ok]) => {
-                            applyHiddenDockTypes();
-                            applyDocRefFeature();
-                            applyStyleFeatures();
-                            applyHideNotebooks();
-                            applyRecentDocs();
-                            applyFavoriteDocs();
-                            applySvgDefaultIcons();
-                            applyHideStatusBar(officialHideStatusBarOn());
-                            onClose();
-                            if (!ok && window.siyuan?.languages) {
-                                /* 失败已 console.warn；仍关闭对话框以免卡死 */
-                            }
-                        });
+                        const panes = dialog.querySelector(".starter-settings-panes");
+                        if (panes) {
+                            panes.scrollTop = 0;
+                        }
                     }
                 };
                 const onKey = (e) => {
                     if (e.key === "Escape") {
                         e.stopPropagation();
-                        onClose(true);
+                        onClose();
                     }
                 };
                 dialog.addEventListener("click", onClick);
                 document.addEventListener("keydown", onKey, true);
                 document.body.appendChild(dialog);
-                const lhInput = dialog.querySelector("[data-starter-block-lh]");
-                const lhVal = dialog.querySelector("[data-starter-block-lh-val]");
-                lhInput?.addEventListener("input", () => {
-                    const v = clampBlockLh(lhInput.value);
-                    if (lhVal) {
-                        lhVal.textContent = v.toFixed(2);
-                    }
-                    document.documentElement.classList.add("starter-block-line-height");
-                    document.documentElement.style.setProperty("--starter-block-line-height", String(v));
-                });
+
+                if (themeOn) {
+                    dialog.querySelector("[data-starter-adaptive-topbar]")?.addEventListener("change", persistLayout);
+                    dialog.querySelector("[data-starter-dock-in-content]")?.addEventListener("change", persistLayout);
+                    dialog.querySelectorAll("[data-starter-hide-type]").forEach((input) => {
+                        input.addEventListener("change", persistLayout);
+                    });
+                }
+
+                dialog.querySelector("[data-starter-doc-ref-style]")?.addEventListener("change", persistStyle);
                 dialog.querySelector("[data-starter-plain-table-head]")?.addEventListener("change", (e) => {
                     document.documentElement.classList.toggle("starter-plain-table-head", !!e.target.checked);
+                    persistStyle();
                 });
                 dialog.querySelector("[data-starter-svg-default]")?.addEventListener("change", (e) => {
-                    previewUseSvgDefault = !!e.target.checked;
-                    applySvgDefaultIcons();
+                    persistOfficialSvgDefault(!!e.target.checked).then(() => applySvgDefaultIcons());
                 });
                 dialog.querySelector("[data-starter-hide-status]")?.addEventListener("change", (e) => {
-                    previewHideStatusBar = !!e.target.checked;
-                    applyHideStatusBar(previewHideStatusBar);
+                    persistOfficialHideStatusBar(!!e.target.checked).then(() => {
+                        applyHideStatusBar(officialHideStatusBarOn());
+                    });
                 });
                 dialog.querySelector("[data-starter-hide-notebook]")?.addEventListener("change", (e) => {
                     const on = !!e.target.checked;
@@ -865,12 +1487,15 @@ module.exports = class CursorArtTools extends Plugin {
                     } else {
                         stopHideNotebooks();
                     }
+                    persistStyle();
                 });
                 dialog.querySelector("[data-starter-hide-tab-new]")?.addEventListener("change", (e) => {
                     document.documentElement.classList.toggle("starter-hide-tab-new", !!e.target.checked);
+                    persistStyle();
                 });
                 dialog.querySelector("[data-starter-hide-tab-switch]")?.addEventListener("change", (e) => {
                     document.documentElement.classList.toggle("starter-hide-tab-more", !!e.target.checked);
+                    persistStyle();
                 });
                 const recentInput = dialog.querySelector("[data-starter-recent-max]");
                 const recentVal = dialog.querySelector("[data-starter-recent-max-val]");
@@ -879,18 +1504,21 @@ module.exports = class CursorArtTools extends Plugin {
                     if (recentInput) {
                         recentInput.disabled = !on;
                     }
-                    previewShowRecentDocs = on;
+                    persistStyle();
                     applyRecentDocs();
                 };
                 dialog.querySelector("[data-starter-show-recent]")?.addEventListener("change", syncRecentControls);
-                syncRecentControls();
+                if (recentInput) {
+                    recentInput.disabled = !dialog.querySelector("[data-starter-show-recent]")?.checked;
+                }
                 recentInput?.addEventListener("input", () => {
                     const v = Math.max(1, clampListMax(recentInput.value));
                     if (recentVal) {
                         recentVal.textContent = String(v);
                     }
-                    previewRecentMax = v;
+                    config.recentDocsMax = v;
                     applyRecentDocs();
+                    persistStyleSoon();
                 });
                 const favMaxInput = dialog.querySelector("[data-starter-fav-max]");
                 const favMaxVal = dialog.querySelector("[data-starter-fav-max-val]");
@@ -899,70 +1527,44 @@ module.exports = class CursorArtTools extends Plugin {
                     if (favMaxInput) {
                         favMaxInput.disabled = !on;
                     }
-                    previewShowFavoriteDocs = on;
+                    persistStyle();
                     applyFavoriteDocs();
                 };
                 dialog.querySelector("[data-starter-show-fav]")?.addEventListener("change", syncFavControls);
-                syncFavControls();
+                if (favMaxInput) {
+                    favMaxInput.disabled = !dialog.querySelector("[data-starter-show-fav]")?.checked;
+                }
                 favMaxInput?.addEventListener("input", () => {
                     const v = Math.max(1, clampListMax(favMaxInput.value));
                     if (favMaxVal) {
                         favMaxVal.textContent = String(v);
                     }
-                    previewFavoriteMax = v;
                     applyFavoriteDocs();
+                    persistStyleSoon();
                 });
-            };
-
-            const injectPluginsMenuItem = () => {
-                const menu = window.siyuan?.menus?.menu;
-                if (!menu || typeof menu.addItem !== "function") {
-                    return;
-                }
-                const el = menu.element;
-                if (!el || el.classList.contains("fn__none")) {
-                    return;
-                }
-                if (el.querySelector(`[data-id="${MENU_ITEM_ID}"]`)) {
-                    return;
-                }
-                if (typeof menu.addSeparator === "function") {
-                    menu.addSeparator({id: "starter-theme-settings-sep"});
-                }
-                menu.addItem({
-                    id: MENU_ITEM_ID,
-                    icon: "iconSettings",
-                    label: "cursor极简 设置",
-                    click() {
-                        openSettingsDialog();
-                    },
+                const lhInput = dialog.querySelector("[data-starter-block-lh]");
+                const lhVal = dialog.querySelector("[data-starter-block-lh-val]");
+                lhInput?.addEventListener("input", () => {
+                    const v = clampBlockLh(lhInput.value);
+                    if (lhVal) {
+                        lhVal.textContent = v.toFixed(2);
+                    }
+                    document.documentElement.classList.add("starter-block-line-height");
+                    document.documentElement.style.setProperty("--starter-block-line-height", String(v));
+                    persistStyleSoon();
                 });
-            };
 
-            const onBarPluginsClick = () => {
-                // 等官方插件菜单建完再插入（与插件「配置」同级入口）
-                requestAnimationFrame(() => {
-                    setTimeout(injectPluginsMenuItem, 0);
-                });
-            };
-
-            const bindPluginsMenu = () => {
-                const bar = document.getElementById("barPlugins");
-                if (!bar || bar.dataset.starterSettingsBound === "1") {
-                    return !!bar;
-                }
-                bar.dataset.starterSettingsBound = "1";
-                bar.addEventListener("click", onBarPluginsClick);
-                return true;
-            };
-
-            const unbindPluginsMenu = () => {
-                const bar = document.getElementById("barPlugins");
-                if (bar) {
-                    bar.removeEventListener("click", onBarPluginsClick);
-                    delete bar.dataset.starterSettingsBound;
+                const verEl = dialog.querySelector("[data-starter-theme-ver]");
+                if (verEl) {
+                    loadThemeVersion().then((ver) => {
+                        verEl.textContent = ver ? `当前版本 ${ver}` : "未检测到主题包（请安装 cursor极简）";
+                    });
                 }
             };
+
+            if (pluginHost) {
+                pluginHost._openSettingsDialog = openSettingsDialog;
+            }
 
             const unmountToggles = () => {
                 document.getElementById(TOGGLE_LEFT_ID)?.remove();
@@ -2754,10 +3356,10 @@ module.exports = class CursorArtTools extends Plugin {
                 '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.1l3.25 6.58 7.26.8-5.48 5.07 1.54 7.23L12 17.2 5.43 20.78l1.54-7.23L1.49 8.48l7.26-.8L12 1.1z"/></svg>';
             const TREE_TOGGLE_SPACE =
                 '<span class="b3-list-item__toggle"><svg class="b3-list-item__arrow fn__hidden"><use xlink:href="#iconRight"></use></svg></span>';
-            const isRecentShown = () => (previewShowRecentDocs ?? config.showRecentDocs) !== false;
-            const isFavShown = () => (previewShowFavoriteDocs ?? config.showFavoriteDocs) !== false;
-            const getRecentMax = () => (isRecentShown() ? clampListMax(previewRecentMax ?? config.recentDocsMax) : 0);
-            const getFavMax = () => (isFavShown() ? clampListMax(previewFavoriteMax ?? config.favoriteDocsMax) : 0);
+            const isRecentShown = () => config.showRecentDocs !== false;
+            const isFavShown = () => config.showFavoriteDocs !== false;
+            const getRecentMax = () => (isRecentShown() ? clampListMax(config.recentDocsMax) : 0);
+            const getFavMax = () => (isFavShown() ? clampListMax(config.favoriteDocsMax) : 0);
 
             const isClosedNotebookList = (el, fileEl) =>
                 el === fileEl.lastElementChild &&
@@ -3939,7 +4541,12 @@ module.exports = class CursorArtTools extends Plugin {
             const tryMount = async () => {
                 await initConfig();
                 await seedOfficialDefaultsIfNeeded();
-                syncLayoutFeaturesToTheme();
+                ensureSettingStyles();
+                ensureFeatureStyles();
+                if (pluginHost) {
+                    await installEditorFeatures(pluginHost);
+                }
+                startThemeWatch();
                 applyHiddenDockTypes();
                 startOutlineFollow();
                 startPathBreadcrumb();
@@ -3949,25 +4556,26 @@ module.exports = class CursorArtTools extends Plugin {
                 applyRecentDocs();
                 applyFavoriteDocs();
                 startDocIconWatch();
-                const okDocks = !isCursorArtTheme() || mountAllDocks();
+                const okDocks = !isCursorArtTheme() || config.dockInContent === false || mountAllDocks();
                 const okToggles = mountToggles();
-                const okMenu = bindPluginsMenu();
                 const okHeart = mountDonateHeart();
-                if (okDocks && okToggles && okMenu && okHeart) {
+                if (okDocks && okToggles && okHeart) {
                     return;
                 }
                 const obs = new MutationObserver(() => {
                     applyHiddenDockTypes();
                     schedulePathBars();
                     startDocIconWatch();
-                    if (isCursorArtTheme()) {
+                    if (isCursorArtTheme() && config.dockInContent !== false) {
                         mountAllDocks();
                     }
                     const t = mountToggles();
-                    const m = bindPluginsMenu();
                     const h = mountDonateHeart();
-                    const d = !isCursorArtTheme() || document.getElementById("dockLeft")?.dataset?.starterMounted === "1";
-                    if (d && t && m && h && docIconWatchObs) {
+                    const d =
+                        !isCursorArtTheme() ||
+                        config.dockInContent === false ||
+                        document.getElementById("dockLeft")?.dataset?.starterMounted === "1";
+                    if (d && t && h && docIconWatchObs) {
                         obs.disconnect();
                     }
                 });
@@ -3977,16 +4585,15 @@ module.exports = class CursorArtTools extends Plugin {
 
             document.addEventListener("click", rememberDockClick, true);
             document.addEventListener("click", suppressActiveDockCollapse, false);
-            startThemeWatch();
 
             window.destroyTheme = async () => {
                 document.removeEventListener("click", rememberDockClick, true);
                 document.removeEventListener("click", suppressActiveDockCollapse, false);
                 stopThemeWatch();
-                disableLayoutFeatures();
-                stopOutlineFollow();
-                stopPathBreadcrumb();
+                layoutFeaturesOn = false;
                 document.documentElement.classList.remove(
+                    "starter-adaptive-topbar",
+                    "starter-default-topbar",
                     "starter-custom-doc-ref",
                     "starter-plain-table-head",
                     "starter-block-line-height",
@@ -3995,18 +4602,24 @@ module.exports = class CursorArtTools extends Plugin {
                     "starter-hide-tab-more"
                 );
                 document.documentElement.style.removeProperty("--starter-block-line-height");
+                stopOutlineFollow();
+                stopPathBreadcrumb();
                 stopHideNotebooks();
                 stopRecentDocs();
                 stopFavoriteDocs();
                 stopTreeFocusGuard();
                 stopDocIconWatch();
                 stopDocRefs();
-                unbindPluginsMenu();
                 closeSettingsDialog();
                 document.getElementById(HIDE_STYLE_ID)?.remove();
+                document.getElementById(SETTINGS_STYLE_ID)?.remove();
+                document.getElementById(FEATURE_STYLE_ID)?.remove();
                 unmountDonateHeart();
                 unmountToggles();
                 sides.forEach(unmountOne);
+                if (pluginHost) {
+                    uninstallEditorFeatures(pluginHost);
+                }
             };
 
             if (document.readyState === "loading") {
@@ -4020,6 +4633,7 @@ module.exports = class CursorArtTools extends Plugin {
 
     async onunload() {
         try {
+            uninstallEditorFeatures(this);
             if (typeof window.destroyTheme === "function") {
                 await window.destroyTheme();
             }

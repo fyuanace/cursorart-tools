@@ -1,29 +1,17 @@
 # cursor极简工具
 
-Companion plugin for the [cursorart](https://github.com/fyuanace/cursorart) theme.
+Companion plugin for the [cursorart](https://github.com/fyuanace/cursorart) theme. Former **fhelper** features now live here — disable fhelper to avoid double child-nav inject.
 
-SiYuan bazaar no longer allows new themes to ship `theme.js`. Interactive features of **cursor极简** therefore live in this plugin.
+## Settings
 
-## Theme gate
+Plugins menu → **cursor极简工具**. There is no Save button; each control applies and persists immediately.
 
-**Sidebar top dock strip** runs only while the active light/dark theme folder is `cursorart`. Title-bar height is handled entirely in theme CSS via DPI media queries (about 55 device pixels). Other helpers stay available.
+The **Sidebar** tab requires the cursorart theme. Style, Edit, Slash, Config sync, and About work on any theme.
 
-The bazaar does **not** auto-install a companion theme or plugin. Install both packages yourself; this plugin shows a one-time tip if cursor极简 is not the current theme.
+Config: `/data/storage/theme/cursorart/config.json`.
 
-## Install
+### v1.2.0
 
-1. Install and enable theme **cursor极简** (`cursorart`) for light and dark
-2. Install and enable this plugin
-3. Restart SiYuan if docks do not remount
-
-## Note
-
-Config is stored at `/data/storage/theme/cursorart/config.json` (same path as the old theme JS), so previous settings carry over.
-
-### v1.0.2
-
-- Title-bar height moved to theme CSS (DPI media queries); plugin no longer sets it
-
-### v1.0.1
-
-- Dock strip only when theme `cursorart` is active
+- Merged fhelper (child nav, image DPI, CJK spacing, slash filter, default icons, config sync)
+- Six tabs; live apply without Save
+- About: Support author; cache path moved to Config sync
