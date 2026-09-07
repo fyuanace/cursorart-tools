@@ -132,6 +132,11 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 
 ### Theme cursor极简
 
+#### v2.0.9
+
+- Chinese README light/dark previews now use image files so they render on GitHub
+- Added a Support the author section
+
 #### v2.0.8
 
 - Theme and plugin now share one intro, with feature screenshots
@@ -171,6 +176,10 @@ First public release.
 - File-tree favorites and recents, path breadcrumb, document-ref style, quieter outline that follows the editor
 
 ### Plugin cursor极简工具
+
+#### v1.2.6
+
+- Added a Support the author section
 
 #### v1.2.5
 

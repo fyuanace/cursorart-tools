@@ -2,7 +2,7 @@
   "name": "cursorart-tools",
   "author": "fyuan",
   "url": "https://github.com/fyuanace/cursorart-tools",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "minAppVersion": "3.1.27",
   "backends": [
     "all"
