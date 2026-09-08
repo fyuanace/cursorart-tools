@@ -132,6 +132,10 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 
 ### Theme cursor极简
 
+#### v2.0.10
+
+- Converted `preview.png` to a real PNG so bazaar format checks pass
+
 #### v2.0.9
 
 - Chinese README light/dark previews now use image files so they render on GitHub
@@ -176,6 +180,10 @@ First public release.
 - File-tree favorites and recents, path breadcrumb, document-ref style, quieter outline that follows the editor
 
 ### Plugin cursor极简工具
+
+#### v1.2.7
+
+- Converted `preview.png` to a real PNG so bazaar format checks pass
 
 #### v1.2.6
 
