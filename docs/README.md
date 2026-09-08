@@ -2,7 +2,7 @@
 
 cursor极简主题配套插件。交互能力（含原 fhelper）都在本插件。
 
-给用户看的介绍与主题共用一份：[instruction/README.md](instruction/README.md)（英文 [instruction/README_en.md](instruction/README_en.md)）。
+给用户看的介绍与主题共用一份：[instruction/README.md](instruction/README.md)（英文 [instruction/README_en.md](instruction/README_en.md)）。开篇写当前匹配的主题 / 插件版本，须与主题 `theme.json` 和本仓库 `plugin.json` 一致。
 
 主入口：`index.js`；编辑类能力：`editor-features.js`；配置：`/data/storage/theme/cursorart/config.json`。
 

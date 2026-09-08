@@ -1,5 +1,7 @@
 # cursor极简
 
+Currently matched versions: theme **v2.0.10**, plugin **v1.2.8**.
+
 **Inspired by Cursor and Notion: a clean, modern layout and interaction. Adds CJK-Latin spacing, image optimization, favorites, and other highly requested features. Please use the theme and plugin together.**
 
 Theme only: no favorites, child-doc index, or config sync.
