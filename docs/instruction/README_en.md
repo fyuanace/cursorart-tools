@@ -181,6 +181,10 @@ First public release.
 
 ### Plugin cursor极简工具
 
+#### v1.2.8
+
+- Removed the non-standard `i18n` field from `plugin.json` (locale files stay in `i18n/`)
+
 #### v1.2.7
 
 - Converted `preview.png` to a real PNG so bazaar format checks pass
