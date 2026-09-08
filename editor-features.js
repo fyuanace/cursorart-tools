@@ -11,11 +11,15 @@ const {
     confirm,
     exitSiYuan,
     openEmoji,
+    hideMessage,
 } = require("siyuan");
 
 const STORAGE_NAME = "fhelper-config.json";
 const LEGACY_STORAGE_NAMES = ["slash-filter-config.json", "slash-filter-config"];
 const CONFIG_SYNC_DIR_NAME = "config-sync";
+const CONFIG_SYNC_MSG_ID = "cursorart-config-sync";
+/** 思源 snackbar：>0 自动关且无 X；0 常驻带 X；-1 常驻无 X，结束后用同一 id 替换 */
+const CONFIG_SYNC_STATUS_HOLD = -1;
 const CONFIG_SYNC_BUILTIN_THEMES = new Set(["daylight", "midnight"]);
 const CONFIG_SYNC_WAIT_MS = 180000;
 const CONFIG_SYNC_QUIET_MS = 12000;
@@ -347,7 +351,7 @@ function parseConfigSyncWsEvent(event) {
 
 /**
  * Trigger SiYuan cloud sync and wait until it succeeds.
- * upload:true 覆盖云端（上传）；upload:false 下载云端，避免先把本地旧缓存传上去。
+ * upload:true 上传本地；upload:false 拉取云端。自动同步模式下该参数可能被忽略。
  */
 async function triggerAndWaitSiyuanSync(plugin, options = {}) {
     const timeoutMs = options.timeoutMs || CONFIG_SYNC_WAIT_MS;
@@ -442,22 +446,42 @@ async function triggerAndWaitSiyuanSync(plugin, options = {}) {
     });
 }
 
+function showConfigSyncStatus(text, timeout = 6000, type = "info") {
+    showMessage(text, timeout, type, CONFIG_SYNC_MSG_ID);
+}
+
+function hideConfigSyncStatus() {
+    if (typeof hideMessage === "function") {
+        hideMessage(CONFIG_SYNC_MSG_ID);
+        return;
+    }
+    document.querySelector(`#message .b3-snackbar[data-id="${CONFIG_SYNC_MSG_ID}"]`)?.remove();
+}
+
 function notifyConfigSyncSyncResult(plugin, syncResult, action = "pull") {
     const i18n = plugin?.i18n || {};
     const isPush = action === "push";
     if (syncResult?.reason === "disabled") {
-        showMessage(isPush
+        showConfigSyncStatus(isPush
             ? (i18n.configSyncSyncDisabledPush || "未开启云端同步，无法覆盖到云端")
             : (i18n.configSyncSyncDisabled || "未开启云端同步，无法下载云端配置"));
         return;
     }
     if (syncResult?.reason === "timeout") {
-        showMessage(isPush
+        if (action === "push-baseline") {
+            showConfigSyncStatus(i18n.configSyncSyncTimeoutPushBaseline || "同步云端基线超时，已取消覆盖");
+            return;
+        }
+        showConfigSyncStatus(isPush
             ? (i18n.configSyncSyncTimeoutPush || "本地已重新拷贝，但同步超时，未能覆盖云端")
             : (i18n.configSyncSyncTimeout || "同步超时，已取消下载云端配置"));
         return;
     }
-    showMessage(isPush
+    if (action === "push-baseline") {
+        showConfigSyncStatus(i18n.configSyncSyncFailedPushBaseline || "未能同步云端基线，已取消覆盖");
+        return;
+    }
+    showConfigSyncStatus(isPush
         ? (i18n.configSyncSyncFailedPush || "本地已重新拷贝，但同步失败，未能覆盖云端")
         : (i18n.configSyncSyncFailed || "同步失败，已取消下载云端配置"));
 }
@@ -473,6 +497,43 @@ async function wipeConfigSyncCache(plugin) {
     await apiEnsureDir(root);
     await apiEnsureDir(`${root}/conf`);
     await apiEnsureDir(`${root}/themes`);
+}
+
+async function listConfigSyncCacheFiles(plugin) {
+    const root = getConfigSyncRoot(plugin);
+    const files = [];
+    const walk = async (relDir) => {
+        const dir = relDir ? `${root}/${relDir}` : root;
+        const entries = await apiReadDir(dir);
+        for (const entry of entries) {
+            if (!entry?.name) {
+                continue;
+            }
+            const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
+            if (entry.isDir) {
+                await walk(rel);
+                continue;
+            }
+            files.push(rel);
+        }
+    };
+    await walk("");
+    files.sort();
+    return files;
+}
+
+async function pruneConfigSyncCacheToFileList(plugin, files) {
+    if (!Array.isArray(files) || files.length === 0) {
+        return;
+    }
+    const allowed = new Set(files);
+    const existing = await listConfigSyncCacheFiles(plugin);
+    const root = getConfigSyncRoot(plugin);
+    for (const rel of existing) {
+        if (!allowed.has(rel)) {
+            await apiRemovePath(`${root}/${rel}`);
+        }
+    }
 }
 
 async function adoptLegacyFhelperSyncCache(plugin) {
@@ -1041,6 +1102,17 @@ async function importConfFromPetal(plugin, manifest) {
     }
 }
 
+async function removeConfThemeKeepingGit(themeName) {
+    const dest = `/conf/appearance/themes/${themeName}`;
+    const entries = await apiReadDir(dest);
+    for (const entry of entries) {
+        if (!entry?.name || entry.name === ".git") {
+            continue;
+        }
+        await apiRemovePath(`${dest}/${entry.name}`);
+    }
+}
+
 async function importThemesFromPetal(plugin) {
     const root = getConfigSyncRoot(plugin);
     const themesDir = `${root}/themes`;
@@ -1049,6 +1121,7 @@ async function importThemesFromPetal(plugin) {
         if (!entry?.isDir || !entry.name || CONFIG_SYNC_BUILTIN_THEMES.has(entry.name)) {
             continue;
         }
+        await removeConfThemeKeepingGit(entry.name);
         await copyDirRecursive(`${themesDir}/${entry.name}`, `/conf/appearance/themes/${entry.name}`);
     }
 }
@@ -1060,8 +1133,22 @@ async function pushConfigSync(plugin, options = {}) {
     plugin.configSyncBusy = true;
     try {
         if (options.notify) {
-            showMessage(plugin.i18n.configSyncSyncing || "正在同步…", 0);
+            showConfigSyncStatus(plugin.i18n.configSyncSyncing || "正在同步…", CONFIG_SYNC_STATUS_HOLD);
         }
+        if (!isSiyuanCloudSyncEnabled()) {
+            if (options.notify) {
+                notifyConfigSyncSyncResult(plugin, { ok: false, reason: "disabled" }, "push");
+            }
+            return { skipped: true, reason: "sync-disabled" };
+        }
+        const baseline = await triggerAndWaitSiyuanSync(plugin, { upload: false });
+        if (!baseline.ok) {
+            if (options.notify) {
+                notifyConfigSyncSyncResult(plugin, baseline, "push-baseline");
+            }
+            return { skipped: true, reason: `sync-baseline-${baseline.reason}` };
+        }
+        await sleepMs(CONFIG_SYNC_AFTER_SYNC_MS);
         await wipeConfigSyncCache(plugin);
         const localConfHash = await buildLocalConfFingerprint();
         const localThemesHash = await buildLocalThemesFingerprint();
@@ -1080,8 +1167,12 @@ async function pushConfigSync(plugin, options = {}) {
                 hash: localThemesHash || themePack.hash,
                 names: themePack.names,
             },
+            files: [],
         };
         await saveConfigSyncManifest(plugin, manifest);
+        manifest.files = await listConfigSyncCacheFiles(plugin);
+        await saveConfigSyncManifest(plugin, manifest);
+        await pruneConfigSyncCacheToFileList(plugin, manifest.files);
         const syncResult = await triggerAndWaitSiyuanSync(plugin, { upload: true });
         if (!syncResult.ok) {
             if (options.notify) {
@@ -1090,7 +1181,7 @@ async function pushConfigSync(plugin, options = {}) {
             return { skipped: true, reason: `sync-${syncResult.reason}`, copied: true };
         }
         if (options.notify) {
-            showMessage(plugin.i18n.configSyncPushed || "已覆盖云端配置并完成同步");
+            showConfigSyncStatus(plugin.i18n.configSyncPushed || "已覆盖云端配置并完成同步");
         }
         return { ok: true, manifest };
     } finally {
@@ -1105,7 +1196,7 @@ async function pullConfigSync(plugin, options = {}) {
     plugin.configSyncBusy = true;
     try {
         if (options.notify) {
-            showMessage(plugin.i18n.configSyncSyncing || "正在同步…", 0);
+            showConfigSyncStatus(plugin.i18n.configSyncSyncing || "正在同步…", CONFIG_SYNC_STATUS_HOLD);
         }
         if (!isSiyuanCloudSyncEnabled()) {
             if (options.notify) {
@@ -1113,7 +1204,6 @@ async function pullConfigSync(plugin, options = {}) {
             }
             return { skipped: true, reason: "sync-disabled" };
         }
-        await wipeConfigSyncCache(plugin);
         const syncResult = await triggerAndWaitSiyuanSync(plugin, { upload: false });
         if (!syncResult.ok) {
             if (options.notify) {
@@ -1129,14 +1219,18 @@ async function pullConfigSync(plugin, options = {}) {
         }
         if (!manifest) {
             if (options.notify) {
-                showMessage(plugin.i18n.configSyncNoPack || "缓存中还没有配置数据");
+                showConfigSyncStatus(plugin.i18n.configSyncNoPack || "缓存中还没有配置数据");
             }
             return { skipped: true, reason: "no-pack" };
         }
-        await importConfFromPetal(plugin, manifest);
+        await pruneConfigSyncCacheToFileList(plugin, manifest.files);
         await importThemesFromPetal(plugin);
+        await importConfFromPetal(plugin, manifest);
         if (options.notify !== false) {
+            hideConfigSyncStatus();
             promptConfigSyncRestart(plugin);
+        } else {
+            hideConfigSyncStatus();
         }
         return { ok: true, needConf: true, needThemes: true };
     } finally {
@@ -6587,7 +6681,7 @@ class EditorFeatures {
             setSyncButtonsBusy(true);
             pushConfigSync(this, {force: true, notify: true}).catch((error) => {
                 console.warn(`${LOG_PREFIX} manual pushConfigSync failed`, error);
-                showMessage(this.i18n.configSyncFailed);
+                showConfigSyncStatus(this.i18n.configSyncFailed, 6000, "error");
             }).finally(() => {
                 setSyncButtonsBusy(false);
             });
@@ -6596,7 +6690,7 @@ class EditorFeatures {
             setSyncButtonsBusy(true);
             pullConfigSync(this, {force: true, notify: true}).catch((error) => {
                 console.warn(`${LOG_PREFIX} manual pullConfigSync failed`, error);
-                showMessage(this.i18n.configSyncFailed);
+                showConfigSyncStatus(this.i18n.configSyncFailed, 6000, "error");
             }).finally(() => {
                 setSyncButtonsBusy(false);
             });

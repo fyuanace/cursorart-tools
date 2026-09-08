@@ -76,6 +76,14 @@ module.exports = class CursorArtTools extends Plugin {
         this._editorFeatures?.onLayoutReady?.();
     }
 
+    /**
+     * 覆盖/下载会向 petal/cursorart-tools/config-sync 写入大量文件。
+     * 未覆盖此钩子时，思源把 petal 变更当成插件存储更新，默认 onunload+onload，
+     * 顶栏按钮、侧栏 dock、爱心会被反复拆掉再装上（表现为主题疯狂闪烁）。
+     * 真正应用云端配置走「下载云端配置」，不在这里处理。
+     */
+    onDataChanged() {}
+
     _startFeature() {
         /**
          * cursor极简 —
@@ -89,7 +97,7 @@ module.exports = class CursorArtTools extends Plugin {
          * 8) 指向文档的块引用显示文档图标与下划线（不加粗；不改标题/段落引用）
          * 9) 文件树顶部「最近打开」区块
          * 10) 面包屑收藏按钮 + 文件树「收藏」区块
-         * 11) 顶栏前进按钮后捐赠爱心：点开支持页并计数；同电脑名点过即隐藏，换电脑名或复位后再出现
+         * 11) 顶栏前进按钮后捐赠爱心：点开支持页并计数；点过一次即隐藏，设置里复位后再出现
          */
         (function () {
             /** 仅当当前亮/暗主题文件夹名为此时，才挪侧栏 dock */
@@ -107,7 +115,6 @@ module.exports = class CursorArtTools extends Plugin {
             const SETTINGS_STYLE_ID = "cursorart-tools-setting-css";
             const FEATURE_STYLE_ID = "cursorart-tools-feature-css";
             const DIALOG_ID = "starterSettingsDialog";
-            const PLUGIN_VERSION = "1.2.5";
             const DONATE_HEART_ID = "starterDonateHeart";
             const DONATE_FLAG_KEY = "cursorart-donate-clicked";
             const DONATE_HOST_KEY = "cursorart-donate-clicked-host";
@@ -173,14 +180,10 @@ module.exports = class CursorArtTools extends Plugin {
 
             const onThemeRelatedWs = (event) => {
                 const cmd = event?.detail?.cmd || event?.detail?.data?.cmd;
-                if (!cmd) {
-                    syncLayoutFeaturesToTheme();
+                if (cmd !== "reloadTheme" && cmd !== "setAppearance") {
                     return;
                 }
-                const s = String(cmd);
-                if (/appearance|theme|setAppearance|reloadTheme/i.test(s)) {
-                    syncLayoutFeaturesToTheme();
-                }
+                syncLayoutFeaturesToTheme();
             };
 
             const startThemeWatch = () => {
@@ -621,7 +624,6 @@ module.exports = class CursorArtTools extends Plugin {
     width: 100% !important;
     height: 100% !important;
     margin: 0 !important;
-    z-index: 100000 !important;
     display: flex !important;
     align-items: center;
     justify-content: center;
@@ -1040,6 +1042,21 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 done();
             };
 
+            const loadPluginVersion = () => {
+                try {
+                    const dataDir = window.siyuan?.config?.system?.dataDir;
+                    const pluginName = pluginHost?.name || "cursorart-tools";
+                    if (!dataDir) {
+                        return "";
+                    }
+                    const raw = fs.readFileSync(path.join(dataDir, "plugins", pluginName, "plugin.json"), "utf8");
+                    const parsed = JSON.parse(raw);
+                    return typeof parsed?.version === "string" ? parsed.version : "";
+                } catch {
+                    return "";
+                }
+            };
+
             const loadThemeVersion = async () => {
                 try {
                     const res = await fetch("/appearance/themes/cursorart/theme.json", {cache: "no-store"});
@@ -1074,6 +1091,16 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
 
             const closeSettingsDialog = () => {
                 document.getElementById(DIALOG_ID)?.remove();
+            };
+
+            const assignDialogLayer = (el) => {
+                if (!window.siyuan) {
+                    return;
+                }
+                if (typeof window.siyuan.zIndex !== "number" || !Number.isFinite(window.siyuan.zIndex)) {
+                    window.siyuan.zIndex = 10;
+                }
+                el.style.zIndex = String(++window.siyuan.zIndex);
             };
 
             const openSettingsDialog = () => {
@@ -1276,7 +1303,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     "",
                     settingRow(
                         "插件 cursor极简工具",
-                        `当前版本 ${PLUGIN_VERSION}`,
+                        `<span data-starter-plugin-ver>读取中…</span>`,
                         ""
                     ) +
                     settingRow(
@@ -1295,7 +1322,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     ) +
                     settingRow(
                         "复位喜欢按钮",
-                        "清掉本机电脑名下的「已点过爱心」记录，顶栏重新显示爱心。换电脑或电脑名变化也会再出现",
+                        "清掉本机「已点过爱心」记录，顶栏重新显示喜欢按钮",
                         `<button type="button" class="b3-button b3-button--outline" data-starter-dlg="reset-donate">复位</button>`
                     )
                 )}
@@ -1492,6 +1519,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 };
                 dialog.addEventListener("click", onClick);
                 document.addEventListener("keydown", onKey, true);
+                assignDialogLayer(dialog);
                 document.body.appendChild(dialog);
 
                 if (themeOn) {
@@ -1590,6 +1618,11 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     persistStyleSoon();
                 });
 
+                const pluginVerEl = dialog.querySelector("[data-starter-plugin-ver]");
+                if (pluginVerEl) {
+                    const pluginVer = loadPluginVersion();
+                    pluginVerEl.textContent = pluginVer ? `当前版本 ${pluginVer}` : "未读到 plugin.json";
+                }
                 const verEl = dialog.querySelector("[data-starter-theme-ver]");
                 if (verEl) {
                     loadThemeVersion().then((ver) => {
@@ -1726,39 +1759,16 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
 
             const mountAllDocks = () => sides.every((side) => mountOne(side));
 
-            const getPcName = () => {
-                try {
-                    const req = window.require;
-                    if (typeof req === "function") {
-                        const hostname = req("os")?.hostname?.();
-                        if (hostname) {
-                            return String(hostname);
-                        }
-                    }
-                } catch {
-                    /* 非 Electron 走思源设备名 */
-                }
-                try {
-                    const name = window.siyuan?.config?.system?.name;
-                    if (name) {
-                        return String(name);
-                    }
-                } catch {
-                    /* 无设备名则视为未点过 */
-                }
-                return "";
-            };
-
             const migrateDonateFlag = () => {
                 try {
-                    if (localStorage.getItem(DONATE_FLAG_KEY) !== "1") {
+                    if (localStorage.getItem(DONATE_FLAG_KEY) === "1") {
+                        localStorage.removeItem(DONATE_HOST_KEY);
                         return;
                     }
-                    const pc = getPcName();
-                    if (pc) {
-                        localStorage.setItem(DONATE_HOST_KEY, pc);
+                    if (localStorage.getItem(DONATE_HOST_KEY)) {
+                        localStorage.setItem(DONATE_FLAG_KEY, "1");
+                        localStorage.removeItem(DONATE_HOST_KEY);
                     }
-                    localStorage.removeItem(DONATE_FLAG_KEY);
                 } catch {
                     /* 无痕模式忽略 */
                 }
@@ -1766,24 +1776,17 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
 
             const hasClickedDonate = () => {
                 migrateDonateFlag();
-                const pc = getPcName();
-                if (!pc) {
-                    return false;
-                }
                 try {
-                    return localStorage.getItem(DONATE_HOST_KEY) === pc;
+                    return localStorage.getItem(DONATE_FLAG_KEY) === "1";
                 } catch {
                     return false;
                 }
             };
 
             const markDonateClicked = () => {
-                const pc = getPcName();
                 try {
-                    if (pc) {
-                        localStorage.setItem(DONATE_HOST_KEY, pc);
-                    }
-                    localStorage.removeItem(DONATE_FLAG_KEY);
+                    localStorage.setItem(DONATE_FLAG_KEY, "1");
+                    localStorage.removeItem(DONATE_HOST_KEY);
                 } catch {
                     /* 无痕模式仍尽量打开页面 */
                 }
