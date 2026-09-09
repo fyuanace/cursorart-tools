@@ -97,7 +97,7 @@ module.exports = class CursorArtTools extends Plugin {
          * 8) 指向文档的块引用显示文档图标与下划线（不加粗；不改标题/段落引用）
          * 9) 文件树顶部「最近打开」区块
          * 10) 面包屑收藏按钮 + 文件树「收藏」区块
-         * 11) 顶栏前进按钮后捐赠爱心：点开支持页并计数；点过一次即隐藏，设置里复位后再出现
+         * 11) 顶栏前进按钮后捐赠爱心：点过一次写入 config.json，设置里复位后再出现
          */
         (function () {
             /** 仅当当前亮/暗主题文件夹名为此时，才挪侧栏 dock */
@@ -304,6 +304,7 @@ module.exports = class CursorArtTools extends Plugin {
                 favoriteDocs: [],
                 recentDocs: [],
                 seededOfficialDefaults: false,
+                donateClicked: false,
                 ...createDefaultEditorConfig(),
                 editorFeaturesMigrated: true,
             });
@@ -370,6 +371,7 @@ module.exports = class CursorArtTools extends Plugin {
                     favoriteDocs: normalizeFavoriteDocs(parsed?.favoriteDocs),
                     recentDocs: normalizeFavoriteDocs(parsed?.recentDocs).slice(0, recentMeta.max),
                     seededOfficialDefaults: parsed?.seededOfficialDefaults === true,
+                    donateClicked: parsed?.donateClicked === true,
                     ...normalizeEditorConfig(parsed),
                     editorFeaturesMigrated: typeof parsed?.editorFeaturesMigrated === "boolean"
                         ? parsed.editorFeaturesMigrated
@@ -447,26 +449,78 @@ module.exports = class CursorArtTools extends Plugin {
                 });
             }
 
+            const readLegacyDonateClicked = () => {
+                try {
+                    if (localStorage.getItem(DONATE_FLAG_KEY) === "1") {
+                        return true;
+                    }
+                    if (localStorage.getItem(DONATE_HOST_KEY)) {
+                        return true;
+                    }
+                } catch {
+                    /* 无痕模式忽略 */
+                }
+                const confDir = String(window.siyuan?.config?.system?.confDir || "").trim();
+                if (!confDir) {
+                    return false;
+                }
+                const leftover = path.join(confDir, "appearance", "cursorart-donate.json");
+                try {
+                    if (!fs.existsSync(leftover)) {
+                        return false;
+                    }
+                    const parsed = JSON.parse(fs.readFileSync(leftover, "utf8"));
+                    return parsed?.clicked === true;
+                } catch {
+                    return false;
+                }
+            };
+
+            const clearLegacyDonateMarks = () => {
+                try {
+                    localStorage.removeItem(DONATE_FLAG_KEY);
+                    localStorage.removeItem(DONATE_HOST_KEY);
+                } catch {
+                    /* ignore */
+                }
+                const confDir = String(window.siyuan?.config?.system?.confDir || "").trim();
+                if (!confDir) {
+                    return;
+                }
+                const leftover = path.join(confDir, "appearance", "cursorart-donate.json");
+                try {
+                    if (fs.existsSync(leftover)) {
+                        fs.unlinkSync(leftover);
+                    }
+                } catch {
+                    /* ignore */
+                }
+            };
+
             const initConfig = async () => {
                 const fromFile = await loadConfigFromFile(CONFIG_PATH);
                 if (fromFile) {
                     config = fromFile;
-                    return;
+                } else {
+                    const fromLegacyFile = await loadConfigFromFile(LEGACY_CONFIG_PATH);
+                    if (fromLegacyFile) {
+                        config = fromLegacyFile;
+                        await saveConfigToFile(fromLegacyFile);
+                    } else {
+                        const legacy = readLegacyLocal();
+                        if (legacy && legacy.hiddenDockTypes.length) {
+                            config = legacy;
+                            await saveConfigToFile(legacy);
+                        } else {
+                            config = createFactoryConfig();
+                            await saveConfigToFile(config);
+                        }
+                    }
                 }
-                const fromLegacyFile = await loadConfigFromFile(LEGACY_CONFIG_PATH);
-                if (fromLegacyFile) {
-                    config = fromLegacyFile;
-                    await saveConfigToFile(fromLegacyFile);
-                    return;
+                if (!config.donateClicked && readLegacyDonateClicked()) {
+                    await saveConfigToFile({donateClicked: true});
                 }
-                const legacy = readLegacyLocal();
-                if (legacy && legacy.hiddenDockTypes.length) {
-                    config = legacy;
-                    await saveConfigToFile(legacy);
-                    return;
-                }
-                config = createFactoryConfig();
-                await saveConfigToFile(config);
+                clearLegacyDonateMarks();
             };
 
             const getDock = (layoutKey) => window.siyuan?.layout?.[layoutKey];
@@ -1426,6 +1480,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                         ...createFactoryConfig(),
                         favoriteDocs: config.favoriteDocs,
                         recentDocs: config.recentDocs,
+                        donateClicked: config.donateClicked === true,
                         seededOfficialDefaults: true,
                         editorFeaturesMigrated: true,
                     };
@@ -1759,37 +1814,10 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
 
             const mountAllDocks = () => sides.every((side) => mountOne(side));
 
-            const migrateDonateFlag = () => {
-                try {
-                    if (localStorage.getItem(DONATE_FLAG_KEY) === "1") {
-                        localStorage.removeItem(DONATE_HOST_KEY);
-                        return;
-                    }
-                    if (localStorage.getItem(DONATE_HOST_KEY)) {
-                        localStorage.setItem(DONATE_FLAG_KEY, "1");
-                        localStorage.removeItem(DONATE_HOST_KEY);
-                    }
-                } catch {
-                    /* 无痕模式忽略 */
-                }
-            };
-
-            const hasClickedDonate = () => {
-                migrateDonateFlag();
-                try {
-                    return localStorage.getItem(DONATE_FLAG_KEY) === "1";
-                } catch {
-                    return false;
-                }
-            };
+            const hasClickedDonate = () => config.donateClicked === true;
 
             const markDonateClicked = () => {
-                try {
-                    localStorage.setItem(DONATE_FLAG_KEY, "1");
-                    localStorage.removeItem(DONATE_HOST_KEY);
-                } catch {
-                    /* 无痕模式仍尽量打开页面 */
-                }
+                saveConfigToFile({donateClicked: true});
             };
 
             const unmountDonateHeart = () => {
@@ -1878,12 +1906,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
             };
 
             const resetDonateHeart = () => {
-                try {
-                    localStorage.removeItem(DONATE_FLAG_KEY);
-                    localStorage.removeItem(DONATE_HOST_KEY);
-                } catch {
-                    /* 无痕模式仍尽量重新挂上 */
-                }
+                saveConfigToFile({donateClicked: false});
                 unmountDonateHeart();
                 return mountDonateHeart();
             };

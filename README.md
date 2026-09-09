@@ -1,12 +1,12 @@
 # cursor极简
 
-Currently matched versions: theme **v2.0.10**, plugin **v1.2.9**.
+Currently matched versions: theme **v2.0.11**, plugin **v1.2.10**.
 
-**Inspired by Cursor and Notion: a clean, modern layout and interaction. Adds CJK-Latin spacing, image optimization, favorites, and other highly requested features. Please use the theme and plugin together.**
+**Inspired by Cursor and Notion: a clean, modern layout and interaction. Adds CJK-Latin spacing, image optimization, favorites, and other highly requested features. Please install the cursor极简 theme and the cursor极简工具 plugin together.**
 
-Theme only: no favorites, child-doc index, or config sync.
+Installing only the **cursor极简** theme without the **cursor极简工具** plugin: no favorites, child-doc index, or config sync.
 
-Plugin only: sidebar layout and look will not match.
+Installing only the **cursor极简工具** plugin without the **cursor极简** theme: sidebar layout and look will not match.
 
 Set **cursor极简** for both light and dark. Settings: Plugins menu → **cursor极简工具**.
 
@@ -14,11 +14,11 @@ Set **cursor极简** for both light and dark. Settings: Plugins menu → **curso
 
 **Light**
 
-<img src="../../image/light.png" alt="Light preview" width="720">
+<img src="image/light.png" alt="Light preview" width="720">
 
 **Dark**
 
-<img src="../../image/dark.png" alt="Dark preview" width="720">
+<img src="image/dark.png" alt="Dark preview" width="720">
 
 ## Highlights
 
@@ -63,7 +63,7 @@ Favorites and recents are simple lists. The row you click is the only highlight.
 
 The outline hides the doc name and Hx badges, bolds top-level headings, and follows the caret.
 
-<img src="../../image/display.png" alt="Display: favorites, recents, sidebar, and outline" width="720">
+<img src="image/display.png" alt="Display: favorites, recents, sidebar, and outline" width="720">
 
 ## Finding docs and child pages
 
@@ -79,9 +79,9 @@ Unlike Notion, SiYuan does not index child docs in the body by default.
 
 Opening a doc injects the current-level child-doc blocks. You can also delete those children from the index.
 
-<img src="../../image/docs-path.png" alt="Document path breadcrumb and document-ref style" width="720">
+<img src="image/docs-path.png" alt="Document path breadcrumb and document-ref style" width="720">
 
-<img src="../../image/docs-child.png" alt="Child-doc index in the body and outline" width="720">
+<img src="image/docs-child.png" alt="Child-doc index in the body and outline" width="720">
 
 ## Too many buttons
 
@@ -89,9 +89,9 @@ The vertical dock strip eats space. Hide what you do not use (layout switches ne
 
 The slash menu gets long. Turn off commands you never pick.
 
-<img src="../../image/slash-settings.png" alt="Slash menu: toggle unused commands" width="720">
+<img src="image/slash-settings.png" alt="Slash menu: toggle unused commands" width="720">
 
-<img src="../../image/slash-menu.png" alt="Slash command menu" width="720">
+<img src="image/slash-menu.png" alt="Slash command menu" width="720">
 
 ## Editing
 
@@ -103,7 +103,7 @@ Document-ref icons are on by default so they do not look like plain text.
 
 Block line height is a slider in Style.
 
-<img src="../../image/editing.png" alt="Editing: DPI image scale and CJK-Latin spacing" width="720">
+<img src="image/editing.png" alt="Editing: DPI image scale and CJK-Latin spacing" width="720">
 
 ## Config across PCs
 
@@ -115,12 +115,12 @@ Overwrite on one machine, download on the other, then restart.
 
 Turn on SiYuan cloud sync or S3 first.
 
-<img src="../../image/config-sync.png" alt="Config sync: overwrite and download" width="720">
+<img src="image/config-sync.png" alt="Config sync: overwrite and download" width="720">
 
 ## Install
 
 1. Install theme **cursor极简** for light and dark.
-2. Install and enable plugin **cursor极简工具**.
+2. Install and enable the companion plugin **cursor极简工具**. The theme and plugin must be used together.
 3. Disable **fhelper** if it is still on, or child-doc index will double.
 4. Restart SiYuan if the sidebar strip did not mount.
 
@@ -133,6 +133,10 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 ## Changelog
 
 ### Theme cursor极简
+
+#### v2.0.11
+
+- Intro now names both the cursor极简 theme and the cursor极简工具 plugin and asks to use them together
 
 #### v2.0.10
 
@@ -182,6 +186,11 @@ First public release.
 - File-tree favorites and recents, path breadcrumb, document-ref style, quieter outline that follows the editor
 
 ### Plugin cursor极简工具
+
+#### v1.2.10
+
+- Like-heart click is stored in `config.json`, so it stays hidden after restart
+- Intro now names the cursor极简 theme and cursor极简工具 plugin and asks to use them together
 
 #### v1.2.9
 

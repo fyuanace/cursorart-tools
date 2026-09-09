@@ -1,12 +1,12 @@
 # cursor极简
 
-当前匹配版本：主题 **v2.0.10**，插件 **v1.2.9**。
+当前匹配版本：主题 **v2.0.11**，插件 **v1.2.10**。
 
-**参考 Cursor 和 Notion 优化布局和交互，主打简洁、现代化，提供中英文空格间隔、图片优化、收藏等呼声较高的功能。请务必插件和主题一起使用。**
+**参考 Cursor 和 Notion 优化布局和交互，主打简洁、现代化，提供中英文空格间隔、图片优化、收藏等呼声较高的功能。请务必同时安装主题「cursor极简」和插件「cursor极简工具」，配套使用。**
 
-只装主题，没有收藏、子文档索引、配置同步等交互。
+只装主题 **cursor极简**、不装插件 **cursor极简工具**，没有收藏、子文档索引、配置同步等交互。
 
-只装插件，侧栏布局和外观优化也对不齐。
+只装插件 **cursor极简工具**、不装主题 **cursor极简**，侧栏布局和外观优化也对不齐。
 
 亮色 / 暗色请都选 **cursor极简**。设置入口：顶栏插件菜单 → **cursor极简工具**。
 
@@ -14,11 +14,11 @@
 
 **亮色**
 
-<img src="../../image/light.png" alt="亮色预览" width="720">
+<img src="image/light.png" alt="亮色预览" width="720">
 
 **暗色**
 
-<img src="../../image/dark.png" alt="暗色预览" width="720">
+<img src="image/dark.png" alt="暗色预览" width="720">
 
 ## 特色功能
 
@@ -65,7 +65,7 @@
 
 大纲不再显示文档名和 Hx 标记，一级标题加粗，滚动正文时大纲跟着走。
 
-<img src="../../image/display.png" alt="主题显示优化：收藏、最近打开、侧栏与大纲" width="720">
+<img src="image/display.png" alt="主题显示优化：收藏、最近打开、侧栏与大纲" width="720">
 
 ## 文档不好找、子文档难管
 
@@ -81,9 +81,9 @@
 
 打开文档时会自动植入当前层子文档块；也能按这些索引删除对应子文档。
 
-<img src="../../image/docs-path.png" alt="文档路径面包屑与文档引用样式" width="720">
+<img src="image/docs-path.png" alt="文档路径面包屑与文档引用样式" width="720">
 
-<img src="../../image/docs-child.png" alt="子文档索引：正文植入并出现在大纲" width="720">
+<img src="image/docs-child.png" alt="子文档索引：正文植入并出现在大纲" width="720">
 
 ## 菜单按钮太多
 
@@ -95,9 +95,9 @@
 
 可在设置里关掉用不到的斜杠命令，输入 `/` 更干净。
 
-<img src="../../image/slash-settings.png" alt="斜杠菜单：按项开关命令" width="720">
+<img src="image/slash-settings.png" alt="斜杠菜单：按项开关命令" width="720">
 
-<img src="../../image/slash-menu.png" alt="输入斜杠后的命令菜单" width="720">
+<img src="image/slash-menu.png" alt="输入斜杠后的命令菜单" width="720">
 
 ## 编辑体验
 
@@ -117,7 +117,7 @@
 
 样式里可调块行间距。
 
-<img src="../../image/editing.png" alt="编辑体验：高 DPI 图片缩放与中英文空格" width="720">
+<img src="image/editing.png" alt="编辑体验：高 DPI 图片缩放与中英文空格" width="720">
 
 ## 多台电脑配置不同步
 
@@ -129,12 +129,12 @@
 
 须先启用思源官方同步或 S3。
 
-<img src="../../image/config-sync.png" alt="配置同步：覆盖与下载云端配置" width="720">
+<img src="image/config-sync.png" alt="配置同步：覆盖与下载云端配置" width="720">
 
 ## 安装
 
 1. 安装主题 **cursor极简**，亮色和暗色都选它。
-2. 安装并启用插件 **cursor极简工具**。
+2. 安装并启用配套插件 **cursor极简工具**。主题和插件必须一起使用。
 3. 若仍装着 **fhelper**，请禁用，避免子文档索引重复植入。
 4. 侧栏没挂上时，重启一次思源。
 
@@ -147,6 +147,10 @@
 ## 版本更新
 
 ### 主题 cursor极简
+
+#### v2.0.11
+
+- 介绍开篇写明须同时安装主题「cursor极简」和插件「cursor极简工具」
 
 #### v2.0.10
 
@@ -196,6 +200,11 @@
 - 文件树收藏与最近打开、文档路径面包屑、文档引用样式、大纲精简并跟随正文
 
 ### 插件 cursor极简工具
+
+#### v1.2.10
+
+- 喜欢爱心点过后写入 `config.json`，重启后不再反复出现
+- 介绍开篇写明须配套使用主题「cursor极简」和插件「cursor极简工具」
 
 #### v1.2.9
 

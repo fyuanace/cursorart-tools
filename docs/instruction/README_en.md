@@ -1,12 +1,12 @@
 # cursor极简
 
-Currently matched versions: theme **v2.0.10**, plugin **v1.2.9**.
+Currently matched versions: theme **v2.0.11**, plugin **v1.2.10**.
 
-**Inspired by Cursor and Notion: a clean, modern layout and interaction. Adds CJK-Latin spacing, image optimization, favorites, and other highly requested features. Please use the theme and plugin together.**
+**Inspired by Cursor and Notion: a clean, modern layout and interaction. Adds CJK-Latin spacing, image optimization, favorites, and other highly requested features. Please install the cursor极简 theme and the cursor极简工具 plugin together.**
 
-Theme only: no favorites, child-doc index, or config sync.
+Installing only the **cursor极简** theme without the **cursor极简工具** plugin: no favorites, child-doc index, or config sync.
 
-Plugin only: sidebar layout and look will not match.
+Installing only the **cursor极简工具** plugin without the **cursor极简** theme: sidebar layout and look will not match.
 
 Set **cursor极简** for both light and dark. Settings: Plugins menu → **cursor极简工具**.
 
@@ -120,7 +120,7 @@ Turn on SiYuan cloud sync or S3 first.
 ## Install
 
 1. Install theme **cursor极简** for light and dark.
-2. Install and enable plugin **cursor极简工具**.
+2. Install and enable the companion plugin **cursor极简工具**. The theme and plugin must be used together.
 3. Disable **fhelper** if it is still on, or child-doc index will double.
 4. Restart SiYuan if the sidebar strip did not mount.
 
@@ -133,6 +133,10 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 ## Changelog
 
 ### Theme cursor极简
+
+#### v2.0.11
+
+- Intro now names both the cursor极简 theme and the cursor极简工具 plugin and asks to use them together
 
 #### v2.0.10
 
@@ -182,6 +186,11 @@ First public release.
 - File-tree favorites and recents, path breadcrumb, document-ref style, quieter outline that follows the editor
 
 ### Plugin cursor极简工具
+
+#### v1.2.10
+
+- Like-heart click is stored in `config.json`, so it stays hidden after restart
+- Intro now names the cursor极简 theme and cursor极简工具 plugin and asks to use them together
 
 #### v1.2.9
 

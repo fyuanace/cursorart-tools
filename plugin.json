@@ -2,7 +2,7 @@
   "name": "cursorart-tools",
   "author": "fyuan",
   "url": "https://github.com/fyuanace/cursorart-tools",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "minAppVersion": "3.1.27",
   "backends": [
     "all"
@@ -15,8 +15,8 @@
     "zh-CN": "cursor极简工具"
   },
   "description": {
-    "default": "Inspired by Cursor and Notion: a clean, modern layout and interaction. Adds CJK-Latin spacing, image optimization, favorites, and other highly requested features. Please use the theme and plugin together.",
-    "zh-CN": "参考 Cursor 和 Notion 优化布局和交互，主打简洁、现代化，提供中英文空格间隔、图片优化、收藏等呼声较高的功能。请务必插件和主题一起使用。"
+    "default": "Inspired by Cursor and Notion: a clean, modern layout and interaction. Please install the cursor极简 theme and the cursor极简工具 plugin together.",
+    "zh-CN": "参考 Cursor 和 Notion 优化布局和交互，主打简洁、现代化。请务必同时安装主题「cursor极简」和插件「cursor极简工具」，配套使用。"
   },
   "readme": {
     "default": "README.md",

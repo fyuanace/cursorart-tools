@@ -17,7 +17,8 @@ cursor极简主题配套插件。交互能力（含原 fhelper）都在本插件
 | 图片 / 输入者 | `imageScale` `panguSpacing` | 编辑页 | — |
 | 斜杠菜单 | `disabled` | 斜杠菜单页 | — |
 | 配置同步 | `configSync` | 独立页签；缓存路径在本页 | [design/2026-09-07-config-sync.md](design/2026-09-07-config-sync.md) |
-| 收藏 / 最近打开 / 喜欢 | `favoriteDocs` `recentDocs` | 原 cursor 能力 | 主题仓对应 design |
+| 收藏 / 最近打开 | `favoriteDocs` `recentDocs` | 原 cursor 能力 | 主题仓对应 design |
+| 喜欢爱心 | `donateClicked` | 点过后写入 config.json；关于页复位 | [design/2026-09-09-donate-heart.md](design/2026-09-09-donate-heart.md) |
 
 ## 整体架构
 
