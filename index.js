@@ -230,17 +230,9 @@ module.exports = class CursorArtTools extends Plugin {
                 },
             ];
 
-            const DEFAULT_BLOCK_LH = 1.65;
             const DEFAULT_RECENT_MAX = 8;
             const DEFAULT_FAV_MAX = 8;
             const FACTORY_HIDDEN_DOCK_TYPES = ["inbox", "bookmark", "agentChat"];
-            const clampBlockLh = (n) => {
-                const x = Number(n);
-                if (!Number.isFinite(x)) {
-                    return DEFAULT_BLOCK_LH;
-                }
-                return Math.min(2.6, Math.max(1.2, Math.round(x * 20) / 20));
-            };
             const clampListMax = (n) => {
                 const x = Number(n);
                 if (!Number.isFinite(x)) {
@@ -292,8 +284,6 @@ module.exports = class CursorArtTools extends Plugin {
                 adaptiveTopbarHeight: true,
                 dockInContent: true,
                 customDocRefStyle: true,
-                plainTableHead: true,
-                blockLineHeight: DEFAULT_BLOCK_LH,
                 hideNotebooks: false,
                 hideTabNewDoc: true,
                 hideTabSwitch: true,
@@ -359,8 +349,6 @@ module.exports = class CursorArtTools extends Plugin {
                     adaptiveTopbarHeight: boolFrom(parsed, "adaptiveTopbarHeight", factory.adaptiveTopbarHeight),
                     dockInContent: boolFrom(parsed, "dockInContent", factory.dockInContent),
                     customDocRefStyle: boolFrom(parsed, "customDocRefStyle", factory.customDocRefStyle),
-                    plainTableHead: boolFrom(parsed, "plainTableHead", factory.plainTableHead),
-                    blockLineHeight: clampBlockLh(parsed?.blockLineHeight ?? factory.blockLineHeight),
                     hideNotebooks: boolFrom(parsed, "hideNotebooks", factory.hideNotebooks),
                     hideTabNewDoc: boolFrom(parsed, "hideTabNewDoc", factory.hideTabNewDoc),
                     hideTabSwitch: boolFrom(parsed, "hideTabSwitch", factory.hideTabSwitch),
@@ -887,6 +875,13 @@ module.exports = class CursorArtTools extends Plugin {
                     document.head.appendChild(style);
                 }
                 style.textContent = `
+#layouts .layout__center .protyle-breadcrumb > * {
+    transition: opacity 0.18s ease;
+}
+#layouts .layout__center .protyle-breadcrumb.starter-breadcrumb--typing > * {
+    opacity: 0;
+    pointer-events: none;
+}
 html.starter-hide-tab-new #layouts .layout__center .layout-tab-bar--readonly .block__icon[data-type="new"],
 html.starter-hide-tab-more #layouts .layout__center .layout-tab-bar--readonly .block__icon[data-type="more"] {
     display: none !important;
@@ -899,48 +894,6 @@ html.starter-hide-notebook .sy__file li[data-type="navigation-root"] {
 }
 html.starter-hide-notebook .sy__file > ul.b3-list.fn__flex-column {
     display: none !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > li[data-type="navigation-file"] {
-    --file-toggle-width: 18px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
-    padding-left: 0 !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > li[data-type="navigation-file"] {
-    --file-toggle-width: 36px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
-    padding-left: 18px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > li[data-type="navigation-file"] {
-    --file-toggle-width: 54px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
-    padding-left: 36px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > li[data-type="navigation-file"] {
-    --file-toggle-width: 72px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
-    padding-left: 54px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > li[data-type="navigation-file"] {
-    --file-toggle-width: 90px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
-    padding-left: 72px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul > li[data-type="navigation-file"] {
-    --file-toggle-width: 108px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
-    padding-left: 90px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul > ul > li[data-type="navigation-file"] {
-    --file-toggle-width: 126px !important;
-}
-html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul > ul > li[data-type="navigation-file"] > .b3-list-item__toggle {
-    padding-left: 108px !important;
 }
 #layouts .sy__file {
     overflow: hidden;
@@ -1024,7 +977,8 @@ html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul 
     cursor: pointer;
     border-radius: var(--b3-border-radius-s);
     padding: 2px 6px;
-    color: var(--b3-theme-on-background);
+    font-weight: 400;
+    color: var(--starter-side-text);
 }
 #layouts .layout__center .starter-doc-path--tight .starter-doc-path__item--last {
     flex: 1 1 auto;
@@ -1034,19 +988,6 @@ html.starter-hide-notebook .sy__file ul[data-url] > ul > ul > ul > ul > ul > ul 
 }
 #layouts .layout__center .protyle-breadcrumb > .starter-fav-btn {
     flex-shrink: 0;
-}
-html.starter-plain-table-head .b3-typography table thead th,
-html.starter-plain-table-head .protyle-wysiwyg table thead th,
-html.starter-plain-table-head .protyle-wysiwyg [data-node-id] table thead th {
-    font-weight: 400 !important;
-}
-html.starter-plain-table-head .b3-typography table thead th *:not(strong):not(b):not([data-type~="strong"]),
-html.starter-plain-table-head .protyle-wysiwyg table thead th *:not(strong):not(b):not([data-type~="strong"]) {
-    font-weight: inherit !important;
-}
-html.starter-block-line-height .protyle-wysiwyg [data-node-id].p,
-html.starter-block-line-height .b3-typography p {
-    line-height: var(--starter-block-line-height);
 }
 html.starter-custom-doc-ref .b3-typography span[data-type~="block-ref"][data-id]:not(.av__celltext):not([custom-fhelper-child-nav] *),
 html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="block-ref"][data-id]:not(.av__celltext):not([custom-fhelper-child-nav] *) {
@@ -1205,14 +1146,12 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 const dockLockClass = themeOn ? "" : " starter-settings-pane--locked";
 
                 const docRefChecked = config.customDocRefStyle !== false ? " checked" : "";
-                const tableHeadChecked = config.plainTableHead !== false ? " checked" : "";
                 const hideNbChecked = config.hideNotebooks === true ? " checked" : "";
                 const hideTabNewChecked = config.hideTabNewDoc === true ? " checked" : "";
                 const hideTabSwitchChecked = config.hideTabSwitch === true ? " checked" : "";
                 const showRecentChecked = config.showRecentDocs !== false ? " checked" : "";
                 const showFavChecked = config.showFavoriteDocs !== false ? " checked" : "";
                 const svgDefaultChecked = officialSvgDefaultOn() ? " checked" : "";
-                const blockLh = clampBlockLh(config.blockLineHeight);
                 const recentMax = Math.max(1, clampListMax(config.recentDocsMax));
                 const favMax = Math.max(1, clampListMax(config.favoriteDocsMax));
                 const svgDefaultTitle = window.siyuan?.languages?.useSVGDefaultIcon || "默认使用 SVG 图标";
@@ -1329,16 +1268,6 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                         "链接样式",
                         "开启 = 文档引用显示图标与下划线；关闭 = 思源原生块引用",
                         switchHtml("data-starter-doc-ref-style", docRefChecked)
-                    ) +
-                    settingRow(
-                        "表格表头不加粗",
-                        "开启 = 表头与单元格同字重；关闭 = 官方强制加粗",
-                        switchHtml("data-starter-plain-table-head", tableHeadChecked)
-                    ) +
-                    settingRow(
-                        "块行间距",
-                        "正文行高倍数，官方约 1.625",
-                        sliderHtml("data-starter-block-lh", 1.2, 2.6, 0.05, blockLh.toFixed(2), "data-starter-block-lh-val")
                     )
                 )}
               </div>
@@ -1444,13 +1373,11 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 const persistStyle = (extra = {}) => {
                     const patch = {
                         customDocRefStyle: !!dialog.querySelector("[data-starter-doc-ref-style]")?.checked,
-                        plainTableHead: !!dialog.querySelector("[data-starter-plain-table-head]")?.checked,
                         hideNotebooks: !!dialog.querySelector("[data-starter-hide-notebook]")?.checked,
                         hideTabNewDoc: !!dialog.querySelector("[data-starter-hide-tab-new]")?.checked,
                         hideTabSwitch: !!dialog.querySelector("[data-starter-hide-tab-switch]")?.checked,
                         showRecentDocs: !!dialog.querySelector("[data-starter-show-recent]")?.checked,
                         showFavoriteDocs: !!dialog.querySelector("[data-starter-show-fav]")?.checked,
-                        blockLineHeight: clampBlockLh(dialog.querySelector("[data-starter-block-lh]")?.value),
                         recentDocsMax: Math.max(1, clampListMax(dialog.querySelector("[data-starter-recent-max]")?.value)),
                         favoriteDocsMax: Math.max(1, clampListMax(dialog.querySelector("[data-starter-fav-max]")?.value)),
                         ...extra,
@@ -1586,10 +1513,6 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 }
 
                 dialog.querySelector("[data-starter-doc-ref-style]")?.addEventListener("change", persistStyle);
-                dialog.querySelector("[data-starter-plain-table-head]")?.addEventListener("change", (e) => {
-                    document.documentElement.classList.toggle("starter-plain-table-head", !!e.target.checked);
-                    persistStyle();
-                });
                 dialog.querySelector("[data-starter-svg-default]")?.addEventListener("change", (e) => {
                     persistOfficialSvgDefault(!!e.target.checked).then(() => applySvgDefaultIcons());
                 });
@@ -1659,17 +1582,6 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                         favMaxVal.textContent = String(v);
                     }
                     applyFavoriteDocs();
-                    persistStyleSoon();
-                });
-                const lhInput = dialog.querySelector("[data-starter-block-lh]");
-                const lhVal = dialog.querySelector("[data-starter-block-lh-val]");
-                lhInput?.addEventListener("input", () => {
-                    const v = clampBlockLh(lhInput.value);
-                    if (lhVal) {
-                        lhVal.textContent = v.toFixed(2);
-                    }
-                    document.documentElement.classList.add("starter-block-line-height");
-                    document.documentElement.style.setProperty("--starter-block-line-height", String(v));
                     persistStyleSoon();
                 });
 
@@ -2648,6 +2560,43 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 }
             };
 
+            const BREADCRUMB_TYPING_CLASS = "starter-breadcrumb--typing";
+            let breadcrumbTypingHidden = false;
+
+            const isEditorTypingTarget = (node) => {
+                const el = node instanceof Element ? node : node?.parentElement;
+                return !!el?.closest?.("#layouts .layout__center .protyle-wysiwyg, #layouts .layout__center .protyle-title__input");
+            };
+
+            const hideBreadcrumbForTyping = (node) => {
+                const el = node instanceof Element ? node : node?.parentElement;
+                const protyle = el?.closest?.(".protyle");
+                const bar = protyle?.querySelector(".protyle-breadcrumb");
+                if (!bar) {
+                    return;
+                }
+                bar.classList.add(BREADCRUMB_TYPING_CLASS);
+                breadcrumbTypingHidden = true;
+            };
+
+            const showBreadcrumbsAfterMouse = () => {
+                if (!breadcrumbTypingHidden) {
+                    return;
+                }
+                breadcrumbTypingHidden = false;
+                document.querySelectorAll("." + BREADCRUMB_TYPING_CLASS).forEach((el) => {
+                    el.classList.remove(BREADCRUMB_TYPING_CLASS);
+                });
+            };
+
+            const onEditorBeforeInput = (e) => {
+                const inputType = e.inputType || "";
+                if (!inputType.startsWith("insert") || !isEditorTypingTarget(e.target)) {
+                    return;
+                }
+                hideBreadcrumbForTyping(e.target);
+            };
+
             const startPathBreadcrumb = () => {
                 pathBarTitleObs = new MutationObserver(schedulePathBars);
                 pathBarHostObs = new MutationObserver((mutations) => {
@@ -2668,6 +2617,8 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 document.addEventListener("click", onPathCrumbClick, true);
                 document.addEventListener("loaded-protyle-static", onProtylePathBreadcrumb);
                 document.addEventListener("switch-protyle", onProtylePathBreadcrumb);
+                document.addEventListener("beforeinput", onEditorBeforeInput, true);
+                document.addEventListener("mousemove", showBreadcrumbsAfterMouse);
                 schedulePathBars();
             };
 
@@ -2675,6 +2626,12 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 document.removeEventListener("click", onPathCrumbClick, true);
                 document.removeEventListener("loaded-protyle-static", onProtylePathBreadcrumb);
                 document.removeEventListener("switch-protyle", onProtylePathBreadcrumb);
+                document.removeEventListener("beforeinput", onEditorBeforeInput, true);
+                document.removeEventListener("mousemove", showBreadcrumbsAfterMouse);
+                breadcrumbTypingHidden = false;
+                document.querySelectorAll("." + BREADCRUMB_TYPING_CLASS).forEach((el) => {
+                    el.classList.remove(BREADCRUMB_TYPING_CLASS);
+                });
                 pathBarResizeObs.disconnect();
                 pathBarHostObs?.disconnect();
                 pathBarTitleObs?.disconnect();
@@ -4675,11 +4632,8 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
 
             applyStyleFeatures = () => {
                 const root = document.documentElement;
-                root.classList.toggle("starter-plain-table-head", config.plainTableHead !== false);
                 root.classList.toggle("starter-hide-tab-new", config.hideTabNewDoc === true);
                 root.classList.toggle("starter-hide-tab-more", config.hideTabSwitch === true);
-                root.classList.add("starter-block-line-height");
-                root.style.setProperty("--starter-block-line-height", String(config.blockLineHeight));
             };
 
             const tryMount = async () => {
@@ -4739,13 +4693,10 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     "starter-adaptive-topbar",
                     "starter-default-topbar",
                     "starter-custom-doc-ref",
-                    "starter-plain-table-head",
-                    "starter-block-line-height",
                     "starter-hide-notebook",
                     "starter-hide-tab-new",
                     "starter-hide-tab-more"
                 );
-                document.documentElement.style.removeProperty("--starter-block-line-height");
                 stopOutlineFollow();
                 stopPathBreadcrumb();
                 stopHideNotebooks();
