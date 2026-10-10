@@ -832,7 +832,14 @@ module.exports = class CursorArtTools extends Plugin {
     align-items: center;
     flex-shrink: 0;
     gap: 10px;
-    min-width: 160px;
+    min-width: 140px;
+}
+#starterSettingsDialog .starter-settings-pair {
+    align-items: center;
+    gap: 12px;
+}
+#starterSettingsDialog .fhelper-setting__section > .starter-settings-row + .fhelper-setting__row {
+    border-top: 1px solid var(--b3-border-color);
 }
 #starterSettingsDialog .starter-settings-lh .b3-slider {
     width: 120px;
@@ -1125,6 +1132,11 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
           <input class="b3-slider" type="range" min="${min}" max="${max}" step="${step}" value="${value}" ${attr}>
           <span class="starter-settings-lh__val" ${valAttr}>${value}</span>
         </div>`;
+                const pairHtml = (switchAttr, switchChecked, sliderAttr, min, max, step, value, valAttr) =>
+                    `<div class="fn__flex starter-settings-pair">
+          ${sliderHtml(sliderAttr, min, max, step, value, valAttr)}
+          ${switchHtml(switchAttr, switchChecked)}
+        </div>`;
 
                 const rows = tools.length
                     ? tools
@@ -1219,7 +1231,6 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 ${settingSection(
                     "文档树",
                     "",
-                    svgDefaultRow +
                     settingRow(
                         "隐藏笔记本",
                         "文件树不显示笔记本名称，其中文档作为第一级列出",
@@ -1227,23 +1238,13 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     ) +
                     settingRow(
                         "显示最近打开",
-                        "文件树顶部列出最近打开的文档",
-                        switchHtml("data-starter-show-recent", showRecentChecked)
-                    ) +
-                    settingRow(
-                        "最近打开条数",
-                        "最多显示几条",
-                        sliderHtml("data-starter-recent-max", 1, 32, 1, recentMax, "data-starter-recent-max-val")
+                        "文件树顶部列出最近打开的文档；右侧数字是最多显示几条",
+                        pairHtml("data-starter-show-recent", showRecentChecked, "data-starter-recent-max", 1, 32, 1, recentMax, "data-starter-recent-max-val")
                     ) +
                     settingRow(
                         "显示收藏",
-                        "文件树顶部列出收藏的文档；面包屑五角星仍可用来收藏",
-                        switchHtml("data-starter-show-fav", showFavChecked)
-                    ) +
-                    settingRow(
-                        "收藏条数",
-                        "默认显示条数，超出可点「更多」展开",
-                        sliderHtml("data-starter-fav-max", 1, 32, 1, favMax, "data-starter-fav-max-val")
+                        "文件树顶部列出收藏的文档；右侧数字是默认显示条数，超出可点「更多」。面包屑五角星仍可收藏",
+                        pairHtml("data-starter-show-fav", showFavChecked, "data-starter-fav-max", 1, 32, 1, favMax, "data-starter-fav-max-val")
                     )
                 )}
                 ${hideStatusRow ? settingSection("界面", "", hideStatusRow) : ""}
@@ -1265,7 +1266,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     "正文",
                     "",
                     settingRow(
-                        "链接样式",
+                        "文档引用链接样式",
                         "开启 = 文档引用显示图标与下划线；关闭 = 思源原生块引用",
                         switchHtml("data-starter-doc-ref-style", docRefChecked)
                     )
@@ -1336,6 +1337,19 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                     const syncHost = dialog.querySelector("[data-starter-sync-mount]");
                     if (iconHost) {
                         editor.mountDefaultIcons(iconHost);
+                        if (svgDefaultRow) {
+                            const section = iconHost.querySelector(".fhelper-setting__section");
+                            const anchor = section?.querySelector(".fhelper-setting__section-desc")
+                                || section?.querySelector(".fhelper-setting__section-title");
+                            if (anchor) {
+                                const holder = document.createElement("div");
+                                holder.innerHTML = svgDefaultRow.trim();
+                                const row = holder.firstElementChild;
+                                if (row) {
+                                    anchor.insertAdjacentElement("afterend", row);
+                                }
+                            }
+                        }
                     }
                     if (editHost) {
                         editor.mountEditTab(editHost);
@@ -2045,6 +2059,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 document.addEventListener("loaded-protyle-static", onProtyleSwitchOutlineFollow);
                 document.addEventListener("switch-protyle", onProtyleSwitchOutlineFollow);
                 startOutlineDefaultExpand();
+                startOutlineDocRefs();
             };
 
             const stopOutlineFollow = () => {
@@ -2054,6 +2069,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 document.removeEventListener("loaded-protyle-static", onProtyleSwitchOutlineFollow);
                 document.removeEventListener("switch-protyle", onProtyleSwitchOutlineFollow);
                 stopOutlineDefaultExpand();
+                stopOutlineDocRefs();
                 if (outlineFollowRaf) {
                     cancelAnimationFrame(outlineFollowRaf);
                     outlineFollowRaf = 0;
@@ -2185,6 +2201,331 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 }
                 outlineKnownParents.clear();
                 outlinePrimedRoots.clear();
+            };
+
+            /**
+             * 大纲里补上「单独成行」的文档引用。
+             * 只看当前打开的文档，跟官方大纲同一次刷新扫一遍 DOM，不写回文档，也不按引用去查库。
+             * 同一块里除了这一个文档引用还有别的字，就当成行内引用，不进大纲。
+             */
+            const OUTLINE_DOCREF_ATTR = "data-starter-outline-ref";
+            const OUTLINE_DOCREF_UL_ATTR = "data-starter-outline-ref-ul";
+            const outlineDocRefZwRe = /[\u200b\ufeff\u00a0]/g;
+            let outlineDocRefObs = null;
+            let outlineDocRefApplying = false;
+
+            const normOutlineDocRefText = (value) =>
+                (value || "").replace(outlineDocRefZwRe, "").replace(/\s+/g, " ").trim();
+
+            const standaloneDocRef = (block) => {
+                if (!(block instanceof HTMLElement) || block.getAttribute("data-type") !== "NodeParagraph") {
+                    return null;
+                }
+                if (
+                    block.closest(
+                        '[data-type="NodeHeading"], [data-type="NodeCodeBlock"], [data-type="NodeTable"], [data-type="NodeAttributeView"], [data-type="NodeMathBlock"], [data-type="NodeHTMLBlock"]'
+                    )
+                ) {
+                    return null;
+                }
+                const refs = [];
+                block.querySelectorAll('span[data-type~="block-ref"][data-id]').forEach((span) => {
+                    if (span.closest("[data-node-id]") === block) {
+                        refs.push(span);
+                    }
+                });
+                if (refs.length !== 1 || refs[0].getAttribute("data-subtype") !== "d") {
+                    return null;
+                }
+                if (block.querySelector("img, video, audio, iframe, .img, .render-node")) {
+                    return null;
+                }
+                const title = normOutlineDocRefText(refs[0].textContent);
+                if (!title || title !== normOutlineDocRefText(block.textContent)) {
+                    return null;
+                }
+                const blockId = block.getAttribute("data-node-id");
+                return blockId ? {blockId, title} : null;
+            };
+
+            const collectOutlineDocRefMarkers = (wysiwyg) => {
+                const markers = [];
+                wysiwyg.querySelectorAll("[data-node-id]").forEach((block) => {
+                    const type = block.getAttribute("data-type");
+                    if (type === "NodeHeading") {
+                        const level = Number((block.getAttribute("data-subtype") || "").slice(1));
+                        const id = block.getAttribute("data-node-id");
+                        if (id && level >= 1 && level <= 6) {
+                            markers.push({kind: "h", id, level});
+                        }
+                        return;
+                    }
+                    const ref = standaloneDocRef(block);
+                    if (ref) {
+                        markers.push({kind: "ref", ...ref});
+                    }
+                });
+                return markers;
+            };
+
+            const clearOutlineDocRefs = (root) => {
+                root.querySelectorAll(`[${OUTLINE_DOCREF_ATTR}]`).forEach((el) => el.remove());
+                root.querySelectorAll(`ul[${OUTLINE_DOCREF_UL_ATTR}]`).forEach((ul) => {
+                    if (!ul.querySelector("li")) {
+                        ul.remove();
+                    }
+                });
+            };
+
+            const outlineDocRefPadding = (parentLi) => {
+                if (!parentLi) {
+                    return {pad: 4, width: 22};
+                }
+                const toggle = parentLi.querySelector(":scope > .b3-list-item__toggle");
+                const parentPad = parseFloat(toggle?.style?.paddingLeft || "") || 4;
+                const parentWidth = parseFloat(parentLi.style.getPropertyValue("--file-toggle-width")) || 22;
+                return {
+                    pad: parentPad <= 4 ? 18 : parentPad + 18,
+                    width: parentWidth <= 22 ? 36 : parentWidth + 18,
+                };
+            };
+
+            const buildOutlineDocRefLi = (ref, parentLi) => {
+                const {pad, width} = outlineDocRefPadding(parentLi);
+                const li = document.createElement("li");
+                li.className = "b3-list-item b3-list-item--hide-action starter-outline-docref";
+                li.setAttribute("data-node-id", ref.blockId);
+                li.setAttribute("data-type", "NodeParagraph");
+                li.setAttribute("data-treetype", "outline");
+                li.setAttribute(OUTLINE_DOCREF_ATTR, "1");
+                li.draggable = false;
+                li.style.setProperty("--file-toggle-width", `${width}px`);
+                li.innerHTML = `
+<span style="padding-left: ${pad}px;margin-right: 2px" class="b3-list-item__toggle fn__hidden">
+    <svg class="b3-list-item__arrow"><use xlink:href="#iconRight"></use></svg>
+</span>
+<svg class="b3-list-item__graphic" style="height: 22px;width: 16px"><use xlink:href="#iconRef"></use></svg>
+<span class="b3-list-item__text"></span>`;
+                li.querySelector(".b3-list-item__text").textContent = ref.title;
+                li.addEventListener("mousedown", (e) => e.stopPropagation());
+                li.addEventListener("dragstart", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+                return li;
+            };
+
+            const placeOutlineDocRef = (el, parentId, beforeId, li) => {
+                const beforeSelector = beforeId
+                    ? `:scope > li[data-node-id="${CSS.escape(beforeId)}"]:not([${OUTLINE_DOCREF_ATTR}])`
+                    : "";
+                if (!parentId) {
+                    let rootUl = el.querySelector(":scope > ul");
+                    if (!rootUl) {
+                        rootUl = document.createElement("ul");
+                        rootUl.setAttribute(OUTLINE_DOCREF_UL_ATTR, "1");
+                        el.appendChild(rootUl);
+                    }
+                    const before = beforeSelector ? rootUl.querySelector(beforeSelector) : null;
+                    if (before) {
+                        rootUl.insertBefore(li, before);
+                    } else {
+                        rootUl.appendChild(li);
+                    }
+                    return;
+                }
+                const parentLi = el.querySelector(
+                    `li[data-node-id="${CSS.escape(parentId)}"][data-type="NodeHeading"]`
+                );
+                if (!parentLi) {
+                    placeOutlineDocRef(el, "", beforeId, li);
+                    return;
+                }
+                let childUl = parentLi.nextElementSibling;
+                let created = false;
+                if (!childUl || childUl.tagName !== "UL") {
+                    childUl = document.createElement("ul");
+                    childUl.setAttribute(OUTLINE_DOCREF_UL_ATTR, "1");
+                    parentLi.after(childUl);
+                    created = true;
+                }
+                const before = beforeSelector ? childUl.querySelector(beforeSelector) : null;
+                if (before) {
+                    childUl.insertBefore(li, before);
+                } else {
+                    childUl.appendChild(li);
+                }
+                if (!created) {
+                    return;
+                }
+                const toggle = parentLi.querySelector(":scope > .b3-list-item__toggle");
+                toggle?.classList.remove("fn__hidden");
+                toggle?.classList.add("b3-list-item__toggle--hl");
+                toggle?.querySelector(".b3-list-item__arrow")?.classList.add("b3-list-item__arrow--open");
+            };
+
+            const outlineDocRefParentId = (li) => {
+                const prev = li.parentElement?.previousElementSibling;
+                if (prev?.tagName === "LI" && prev.getAttribute("data-type") === "NodeHeading") {
+                    return prev.getAttribute("data-node-id") || "";
+                }
+                return "";
+            };
+
+            const outlineDocRefNextHeadingId = (li) => {
+                let next = li.nextElementSibling;
+                while (next?.hasAttribute?.(OUTLINE_DOCREF_ATTR)) {
+                    next = next.nextElementSibling;
+                }
+                if (next?.tagName === "LI" && next.getAttribute("data-type") === "NodeHeading") {
+                    return next.getAttribute("data-node-id") || "";
+                }
+                return "";
+            };
+
+            const outlineDocRefsMatch = (el, plan) => {
+                const current = el.querySelectorAll(`li[${OUTLINE_DOCREF_ATTR}]`);
+                if (current.length !== plan.length) {
+                    return false;
+                }
+                for (let i = 0; i < plan.length; i++) {
+                    const li = current[i];
+                    const item = plan[i];
+                    if (li.getAttribute("data-node-id") !== item.blockId) {
+                        return false;
+                    }
+                    if ((li.querySelector(".b3-list-item__text")?.textContent || "") !== item.title) {
+                        return false;
+                    }
+                    if (outlineDocRefParentId(li) !== item.parentId) {
+                        return false;
+                    }
+                    if (outlineDocRefNextHeadingId(li) !== item.beforeId) {
+                        return false;
+                    }
+                }
+                return true;
+            };
+
+            const syncOutlineDocRefs = () => {
+                if (outlineDocRefApplying) {
+                    return;
+                }
+                outlineDocRefApplying = true;
+                try {
+                    for (const outline of collectOutlineModels()) {
+                        const el = outline.element;
+                        if (!(el instanceof HTMLElement)) {
+                            continue;
+                        }
+                        if (outlineIsFiltering(el)) {
+                            if (el.querySelector(`[${OUTLINE_DOCREF_ATTR}]`)) {
+                                clearOutlineDocRefs(el);
+                            }
+                            continue;
+                        }
+                        const rootId = outline.blockId || "";
+                        const title = rootId
+                            ? document.querySelector(
+                                  `#layouts .layout__center .protyle-title[data-node-id="${CSS.escape(rootId)}"]`
+                              )
+                            : null;
+                        const wysiwyg = title?.closest(".protyle")?.querySelector(".protyle-wysiwyg");
+                        if (!rootId || !wysiwyg) {
+                            if (el.querySelector(`[${OUTLINE_DOCREF_ATTR}]`)) {
+                                clearOutlineDocRefs(el);
+                            }
+                            continue;
+                        }
+                        const markers = collectOutlineDocRefMarkers(wysiwyg);
+                        const plan = [];
+                        markers.forEach((marker, index) => {
+                            if (marker.kind !== "ref") {
+                                return;
+                            }
+                            let parent = null;
+                            for (let i = index - 1; i >= 0; i--) {
+                                if (markers[i].kind === "h") {
+                                    parent = markers[i];
+                                    break;
+                                }
+                            }
+                            let beforeId = "";
+                            for (let i = index + 1; i < markers.length; i++) {
+                                if (markers[i].kind !== "h") {
+                                    continue;
+                                }
+                                if (parent && markers[i].level <= parent.level) {
+                                    break;
+                                }
+                                beforeId = markers[i].id;
+                                break;
+                            }
+                            plan.push({
+                                parentId: parent ? parent.id : "",
+                                beforeId,
+                                blockId: marker.blockId,
+                                title: marker.title,
+                            });
+                        });
+                        if (outlineDocRefsMatch(el, plan)) {
+                            continue;
+                        }
+                        clearOutlineDocRefs(el);
+                        plan.forEach((item) => {
+                            const parentLi = item.parentId
+                                ? el.querySelector(
+                                      `li[data-node-id="${CSS.escape(item.parentId)}"][data-type="NodeHeading"]`
+                                  )
+                                : null;
+                            placeOutlineDocRef(
+                                el,
+                                item.parentId,
+                                item.beforeId,
+                                buildOutlineDocRefLi(item, parentLi)
+                            );
+                        });
+                    }
+                } finally {
+                    queueMicrotask(() => {
+                        outlineDocRefApplying = false;
+                    });
+                }
+            };
+
+            // 官方大纲每次刷新都会整段换成自己的 HTML，我们的项不在里面。
+            // 必须在这次重绘送去绘制之前补上；拖到下一帧就会先消失再出现。内容没变则不动 DOM。
+            const scheduleOutlineDocRefs = () => {
+                syncOutlineDocRefs();
+            };
+
+            const startOutlineDocRefs = () => {
+                document.addEventListener("loaded-protyle-static", scheduleOutlineDocRefs);
+                document.addEventListener("switch-protyle", scheduleOutlineDocRefs);
+                outlineDocRefObs?.disconnect();
+                const host = document.querySelector("#layouts") || document.body;
+                outlineDocRefObs = new MutationObserver((mutations) => {
+                    if (outlineDocRefApplying) {
+                        return;
+                    }
+                    for (const m of mutations) {
+                        const t = m.target;
+                        if (t instanceof Element && t.closest(".sy__outline")) {
+                            scheduleOutlineDocRefs();
+                            return;
+                        }
+                    }
+                });
+                outlineDocRefObs.observe(host, {childList: true, subtree: true});
+                scheduleOutlineDocRefs();
+            };
+
+            const stopOutlineDocRefs = () => {
+                document.removeEventListener("loaded-protyle-static", scheduleOutlineDocRefs);
+                document.removeEventListener("switch-protyle", scheduleOutlineDocRefs);
+                outlineDocRefObs?.disconnect();
+                outlineDocRefObs = null;
+                document.querySelectorAll(".sy__outline").forEach((el) => clearOutlineDocRefs(el));
             };
 
             /** 面包屑：隐藏官方块级条，在旁边画文档路径（避免官方异步 render 盖掉） */
@@ -2648,6 +2989,201 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 });
                 pathCrumbCache.clear();
                 pathCrumbInflight.clear();
+            };
+
+            /**
+             * /bg 插入表格时，思源会立刻用当时的 outerHTML 保存列宽。
+             * 必须在 insertAdjacentHTML 解析之前写上 width，否则会先按 60px 画出来。
+             * 只改「三列、单元格为空、列上还没有 width」的新建表。
+             */
+            let rawInsertAdjacentHTML = null;
+            let rawOuterHTMLDesc = null;
+            const stripMinWidthOnSave = new WeakSet();
+
+            const newTableEditorWidth = (host) => {
+                const wysiwyg = host?.closest?.("#layouts .layout__center .protyle-wysiwyg");
+                if (!wysiwyg || !wysiwyg.isContentEditable) {
+                    return 0;
+                }
+                const style = getComputedStyle(wysiwyg);
+                const content = wysiwyg.clientWidth
+                    - (parseFloat(style.paddingLeft) || 0)
+                    - (parseFloat(style.paddingRight) || 0);
+                const sample = wysiwyg.querySelector('[data-type="NodeTable"]');
+                let tablePadL = 0;
+                let tablePadR = 30;
+                if (sample) {
+                    const tableStyle = getComputedStyle(sample);
+                    tablePadL = parseFloat(tableStyle.paddingLeft) || 0;
+                    tablePadR = parseFloat(tableStyle.paddingRight) || 0;
+                }
+                // 边框和列缝会比列宽总和再宽一点，留出余量避免一创建就横向滚动
+                const slack = 16;
+                return Math.floor(content - tablePadL - tablePadR - slack);
+            };
+
+            const armInsertedTableCols = (host, position, boundary) => {
+                if (position !== "afterend" && position !== "beforebegin") {
+                    return;
+                }
+                const step = position === "beforebegin" ? "previousSibling" : "nextSibling";
+                const tables = [];
+                let node = host[step];
+                while (node && node !== boundary) {
+                    if (node.nodeType === 1) {
+                        if (node.getAttribute?.("data-type") === "NodeTable") {
+                            tables.push(node);
+                        }
+                        node.querySelectorAll?.('[data-type="NodeTable"]').forEach((item) => tables.push(item));
+                    }
+                    node = node[step];
+                }
+                tables.forEach((block) => {
+                    const widened = Array.from(block.querySelectorAll("colgroup > col")).some((col) => {
+                        return /(^|;)\s*width\s*:/i.test(col.getAttribute("style") || "");
+                    });
+                    if (!widened) {
+                        return;
+                    }
+                    stripMinWidthOnSave.add(block);
+                    setTimeout(() => stripMinWidthOnSave.delete(block), 0);
+                });
+            };
+
+            const widenNewTableHtml = (html, host) => {
+                if (!isCursorArtTheme() || typeof html !== "string" || !html.includes("NodeTable")) {
+                    return html;
+                }
+                const total = newTableEditorWidth(host);
+                if (total < 180) {
+                    return html;
+                }
+                const parsed = new DOMParser().parseFromString(html, "text/html");
+                const roots = Array.from(parsed.body.children);
+                if (roots.length !== 1 || roots[0].getAttribute("data-type") !== "NodeTable") {
+                    return html;
+                }
+                const table = roots[0].querySelector("table");
+                const firstRow = table?.querySelector("tr");
+                if (!table || !firstRow || firstRow.cells.length !== 3) {
+                    return html;
+                }
+                const cols = Array.from(table.querySelectorAll("colgroup > col"));
+                if (cols.length !== 0 && cols.length !== 3) {
+                    return html;
+                }
+                if (cols.some((col) => /(^|;)\s*width\s*:/i.test(col.getAttribute("style") || ""))) {
+                    return html;
+                }
+                const cells = Array.from(table.querySelectorAll("th, td"));
+                if (cells.length === 0 || cells.some((cell) => cell.colSpan > 1 || cell.rowSpan > 1)) {
+                    return html;
+                }
+                const filled = cells.some((cell) => {
+                    const text = (cell.textContent || "").replace(/[\u200b\u00a0]/g, "").trim();
+                    return text.length > 0 || !!cell.querySelector("img, video, audio, iframe, svg, math");
+                });
+                if (filled) {
+                    return html;
+                }
+                const base = Math.floor(total / 3);
+                const widths = [base, base, total - base * 2];
+                if (cols.length === 0) {
+                    return html.replace(/<table\b[^>]*>/i, (open) => {
+                        return open + `<colgroup><col style="width: ${widths[0]}px;"><col style="width: ${widths[1]}px;"><col style="width: ${widths[2]}px;"></colgroup>`;
+                    });
+                }
+                let index = 0;
+                return html.replace(/<col\b([^>]*?)\/?>/gi, (full, attrs) => {
+                    if (index >= 3) {
+                        return full;
+                    }
+                    const width = `width: ${widths[index]}px;`;
+                    index += 1;
+                    if (/style\s*=\s*"([^"]*)"/i.test(attrs)) {
+                        const nextAttrs = attrs.replace(/style\s*=\s*"([^"]*)"/i, (match, style) => {
+                            const cleaned = style
+                                .replace(/(^|;)\s*min-width\s*:[^;]*/ig, "")
+                                .replace(/(^|;)\s*width\s*:[^;]*/ig, "")
+                                .replace(/^\s*;\s*|\s*;\s*$/g, "")
+                                .trim();
+                            const body = cleaned ? (cleaned.endsWith(";") ? cleaned : cleaned + ";") : "";
+                            return `style="${body}${width}"`;
+                        });
+                        return `<col${nextAttrs}>`;
+                    }
+                    if (/style\s*=\s*'([^']*)'/i.test(attrs)) {
+                        const nextAttrs = attrs.replace(/style\s*=\s*'([^']*)'/i, (match, style) => {
+                            const cleaned = style
+                                .replace(/(^|;)\s*min-width\s*:[^;]*/ig, "")
+                                .replace(/(^|;)\s*width\s*:[^;]*/ig, "")
+                                .replace(/^\s*;\s*|\s*;\s*$/g, "")
+                                .trim();
+                            const body = cleaned ? (cleaned.endsWith(";") ? cleaned : cleaned + ";") : "";
+                            return `style='${body}${width}'`;
+                        });
+                        return `<col${nextAttrs}>`;
+                    }
+                    return `<col style="${width}"${attrs}>`;
+                });
+            };
+
+            const startNewTableWidth = () => {
+                if (rawInsertAdjacentHTML) {
+                    return;
+                }
+                rawOuterHTMLDesc = Object.getOwnPropertyDescriptor(Element.prototype, "outerHTML");
+                if (rawOuterHTMLDesc?.get && rawOuterHTMLDesc.configurable) {
+                    const desc = rawOuterHTMLDesc;
+                    Object.defineProperty(Element.prototype, "outerHTML", {
+                        configurable: true,
+                        enumerable: desc.enumerable,
+                        get() {
+                            if (stripMinWidthOnSave.has(this)) {
+                                this.querySelectorAll("colgroup > col").forEach((col) => {
+                                    if ((col.style.width || "").trim()) {
+                                        col.style.removeProperty("min-width");
+                                    }
+                                });
+                            }
+                            return desc.get.call(this);
+                        },
+                        set(value) {
+                            desc.set.call(this, value);
+                        },
+                    });
+                }
+                rawInsertAdjacentHTML = Element.prototype.insertAdjacentHTML;
+                Element.prototype.insertAdjacentHTML = function (position, html) {
+                    let next = html;
+                    try {
+                        next = widenNewTableHtml(html, this);
+                    } catch (err) {
+                        next = html;
+                    }
+                    const boundary = position === "beforebegin" ? this.previousSibling : this.nextSibling;
+                    const result = rawInsertAdjacentHTML.call(this, position, next);
+                    if (next !== html) {
+                        try {
+                            armInsertedTableCols(this, position, boundary);
+                        } catch (err) {
+                            /* 挡不住 min-width 时仍保留已经写上的 width */
+                        }
+                    }
+                    return result;
+                };
+            };
+
+            const stopNewTableWidth = () => {
+                if (rawOuterHTMLDesc) {
+                    Object.defineProperty(Element.prototype, "outerHTML", rawOuterHTMLDesc);
+                    rawOuterHTMLDesc = null;
+                }
+                if (!rawInsertAdjacentHTML) {
+                    return;
+                }
+                Element.prototype.insertAdjacentHTML = rawInsertAdjacentHTML;
+                rawInsertAdjacentHTML = null;
             };
 
             /** 文档块引用：识别 rootID===id；图标写进 document 样式表，禁止改 span.style / 正文 */
@@ -4648,6 +5184,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 applyHiddenDockTypes();
                 startOutlineFollow();
                 startPathBreadcrumb();
+                startNewTableWidth();
                 applyDocRefFeature();
                 applyStyleFeatures();
                 applyHideNotebooks();
@@ -4699,6 +5236,7 @@ html.starter-custom-doc-ref .protyle-wysiwyg [data-node-id] span[data-type~="blo
                 );
                 stopOutlineFollow();
                 stopPathBreadcrumb();
+                stopNewTableWidth();
                 stopHideNotebooks();
                 stopRecentDocs();
                 stopFavoriteDocs();

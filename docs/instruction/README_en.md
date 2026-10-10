@@ -1,6 +1,6 @@
 # cursor极简
 
-Currently matched versions: theme **v2.0.11**, plugin **v1.2.10**.
+Currently matched versions: theme **v2.0.14**, plugin **v1.2.13**.
 
 **Inspired by Cursor and Notion: a clean, modern layout and interaction. Adds CJK-Latin spacing, image optimization, favorites, and other highly requested features. Please install the cursor极简 theme and the cursor极简工具 plugin together.**
 
@@ -134,6 +134,19 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 
 ### Theme cursor极简
 
+#### v2.0.14
+
+- Breadcrumb hides only Lock editing; the document icon stays
+- Code blocks use 80% font with aligned line numbers; tabs, splitters, and body spacing are tighter
+
+#### v2.0.13
+
+- Table headers stay regular weight in the theme; code blocks no longer get extra block spacing
+
+#### v2.0.12
+
+- Typography: taller heading line-height/padding, denser lists, code-block spacing, smaller table font, denser right dock
+
 #### v2.0.11
 
 - Intro now names both the cursor极简 theme and the cursor极简工具 plugin and asks to use them together
@@ -165,27 +178,23 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 - Adaptive title-bar height is a toggle
 - Settings panel CSS lives in the plugin, so it still looks right on other themes
 
-#### v2.0.4
-
-- Title-bar height is pure CSS via DPI / `resolution` (~55 device pixels)
-
-#### v2.0.3
-
-- Removed `theme.js` for bazaar rules; interactions move to [cursorart-tools](https://github.com/fyuanace/cursorart-tools)
-
-#### v2.0.2
-
-- Marketplace icon updated to the Cursor app mark
-- Settings label: reset like button
-
-#### v2.0.1
-
-First public release.
-
-- Minimal four-region layout on daylight / midnight
-- File-tree favorites and recents, path breadcrumb, document-ref style, quieter outline that follows the editor
-
 ### Plugin cursor极简工具
+
+#### v1.2.13
+
+- Direct child documents show between the title and the body; a setting can hide them
+- Breadcrumb can append refs to unreferenced child documents, or delete those child documents
+- Document-reference block menu: move the linked document here, or delete the reference block and its document
+- Document deletion cannot be undone; restore only from data history
+- Removed Locate in document tree from the breadcrumb
+
+#### v1.2.12
+
+- Removed the block-spacing and table-header-weight settings; header weight is fixed by the theme
+
+#### v1.2.11
+
+- Style tab: sliders for body text grayness and body font size; apply live and save to config.json
 
 #### v1.2.10
 
@@ -219,37 +228,3 @@ First public release.
 #### v1.2.4
 
 - Breadcrumb uses leftover width; first/last stay full; middle levels collapse to `...` with a prefix-path tooltip
-
-#### v1.2.3
-
-- Locate in tree unpins favorites/recents, expands the official tree, and scrolls the target to the middle
-
-#### v1.2.2
-
-- Factory defaults match the usual setup; About can restore defaults (keeps favorites and recents)
-- Document-ref style on by default
-
-#### v1.2.1
-
-- Regular document refs no longer bold; icon and underline remain
-
-#### v1.2.0
-
-- Merged fhelper: child-doc index, image DPI, CJK spacing, slash filter, config sync
-- Six tabs; live apply without Save
-
-#### v1.1.0
-
-- Settings panel CSS injected by the plugin; sidebar layout switches require cursor极简
-
-#### v1.0.2
-
-- Title-bar height handed back to theme CSS
-
-#### v1.0.1
-
-- Top dock strip only when cursor极简 is active
-
-#### v1.0.0
-
-- First release; takes over theme interactions

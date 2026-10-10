@@ -1,10 +1,10 @@
 # cursor极简
 
-Currently matched versions: theme **v2.0.11**, plugin **v1.2.10**.
+Currently matched versions: theme **v2.0.14**, plugin **v1.2.13**.
 
 **Inspired by Cursor and Notion: a clean, modern layout and interaction. Adds CJK-Latin spacing, image optimization, favorites, and other highly requested features. Please install the cursor极简 theme and the cursor极简工具 plugin together.**
 
-Installing only the **cursor极简** theme without the **cursor极简工具** plugin: no favorites, child-doc index, or config sync.
+Installing only the **cursor极简** theme without the **cursor极简工具** plugin: no favorites or config sync.
 
 Installing only the **cursor极简工具** plugin without the **cursor极简** theme: sidebar layout and look will not match.
 
@@ -33,7 +33,6 @@ Set **cursor极简** for both light and dark. Settings: Plugins menu → **curso
 - Breadcrumb shows the document path.
 - Star to favorite the current doc without digging through native menus.
 - Recently opened list on the file tree.
-- Auto-inserts a child-doc index block; you can delete children from that index.
 
 ### 3. Hidden chrome
 
@@ -65,7 +64,7 @@ The outline hides the doc name and Hx badges, bolds top-level headings, and foll
 
 <img src="image/display.png" alt="Display: favorites, recents, sidebar, and outline" width="720">
 
-## Finding docs and child pages
+## Finding docs
 
 The stock breadcrumb follows block headings, not the file tree.
 
@@ -75,13 +74,7 @@ Native favorites are buried. One star on the breadcrumb pins the current doc.
 
 Recents sit at the top of the file tree.
 
-Unlike Notion, SiYuan does not index child docs in the body by default.
-
-Opening a doc injects the current-level child-doc blocks. You can also delete those children from the index.
-
 <img src="image/docs-path.png" alt="Document path breadcrumb and document-ref style" width="720">
-
-<img src="image/docs-child.png" alt="Child-doc index in the body and outline" width="720">
 
 ## Too many buttons
 
@@ -107,9 +100,9 @@ Block line height is a slider in Style.
 
 ## Config across PCs
 
-SiYuan does not sync `/conf` settings or custom themes.
+SiYuan does not sync `/conf` settings. Themes live in the data folder and sync with SiYuan itself.
 
-Config sync copies them into workspace data, then uses official sync.
+Config sync copies only app settings into workspace data, then uses official sync.
 
 Overwrite on one machine, download on the other, then restart.
 
@@ -121,7 +114,7 @@ Turn on SiYuan cloud sync or S3 first.
 
 1. Install theme **cursor极简** for light and dark.
 2. Install and enable the companion plugin **cursor极简工具**. The theme and plugin must be used together.
-3. Disable **fhelper** if it is still on, or child-doc index will double.
+3. Disable **fhelper** if it is still on.
 4. Restart SiYuan if the sidebar strip did not mount.
 
 Theme: [cursorart](https://github.com/fyuanace/cursorart) · Plugin: [cursorart-tools](https://github.com/fyuanace/cursorart-tools)
@@ -133,6 +126,19 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 ## Changelog
 
 ### Theme cursor极简
+
+#### v2.0.14
+
+- Breadcrumb hides only Lock editing; the document icon stays
+- Code blocks use 80% font with aligned line numbers; tabs, splitters, and body spacing are tighter
+
+#### v2.0.13
+
+- Table headers stay regular weight in the theme; code blocks no longer get extra block spacing
+
+#### v2.0.12
+
+- Typography: taller heading line-height/padding, denser lists, code-block spacing, smaller table font, denser right dock
 
 #### v2.0.11
 
@@ -165,27 +171,23 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 - Adaptive title-bar height is a toggle
 - Settings panel CSS lives in the plugin, so it still looks right on other themes
 
-#### v2.0.4
-
-- Title-bar height is pure CSS via DPI / `resolution` (~55 device pixels)
-
-#### v2.0.3
-
-- Removed `theme.js` for bazaar rules; interactions move to [cursorart-tools](https://github.com/fyuanace/cursorart-tools)
-
-#### v2.0.2
-
-- Marketplace icon updated to the Cursor app mark
-- Settings label: reset like button
-
-#### v2.0.1
-
-First public release.
-
-- Minimal four-region layout on daylight / midnight
-- File-tree favorites and recents, path breadcrumb, document-ref style, quieter outline that follows the editor
-
 ### Plugin cursor极简工具
+
+#### v1.2.13
+
+- Direct child documents show between the title and the body; a setting can hide them
+- Breadcrumb can append refs to unreferenced child documents, or delete those child documents
+- Document-reference block menu: move the linked document here, or delete the reference block and its document
+- Document deletion cannot be undone; restore only from data history
+- Removed Locate in document tree from the breadcrumb
+
+#### v1.2.12
+
+- Removed the block-spacing and table-header-weight settings; header weight is fixed by the theme
+
+#### v1.2.11
+
+- Style tab: sliders for body text grayness and body font size; apply live and save to config.json
 
 #### v1.2.10
 
@@ -219,37 +221,3 @@ First public release.
 #### v1.2.4
 
 - Breadcrumb uses leftover width; first/last stay full; middle levels collapse to `...` with a prefix-path tooltip
-
-#### v1.2.3
-
-- Locate in tree unpins favorites/recents, expands the official tree, and scrolls the target to the middle
-
-#### v1.2.2
-
-- Factory defaults match the usual setup; About can restore defaults (keeps favorites and recents)
-- Document-ref style on by default
-
-#### v1.2.1
-
-- Regular document refs no longer bold; icon and underline remain
-
-#### v1.2.0
-
-- Merged fhelper: child-doc index, image DPI, CJK spacing, slash filter, config sync
-- Six tabs; live apply without Save
-
-#### v1.1.0
-
-- Settings panel CSS injected by the plugin; sidebar layout switches require cursor极简
-
-#### v1.0.2
-
-- Title-bar height handed back to theme CSS
-
-#### v1.0.1
-
-- Top dock strip only when cursor极简 is active
-
-#### v1.0.0
-
-- First release; takes over theme interactions

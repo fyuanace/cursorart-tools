@@ -33,13 +33,9 @@ const FHELPER_TOOLTIP_STYLE_ID = "fhelper-tooltip-css";
 const DOC_REF_STYLE_ID = "fhelper-doc-ref-css";
 const LEGACY_FILE_TREE_STYLE_ID = "fhelper-file-tree-css";
 const CHILD_NAV_FLAG_ATTR = "custom-fhelper-child-nav";
-const CHILD_NAV_TARGET_ATTR = "custom-fhelper-child-nav-target";
-const CHILD_NAV_END_ATTR = "custom-fhelper-child-nav-end";
 const CHILD_NAV_STYLE_ID = "fhelper-child-nav-css";
 const CHILD_NAV_ICON_STYLE_ID = "fhelper-child-nav-icon-css";
 const CHILD_NAV_HTML_CLASS = "fhelper-child-nav-style";
-const CHILD_NAV_SQL_LIMIT = 4096;
-const NEW_CHILD_DOC_NAV_REF_SLASH_ID = "newChildDocNavRef";
 const DOC_REF_CLASS = "fhelper-doc-ref";
 const DOC_REF_BROKEN_CLASS = "fhelper-doc-ref-broken";
 const DOC_REF_ICON_CLASS = "fhelper-doc-ref-icon";
@@ -310,10 +306,10 @@ function createDefaultIconRow(plugin, key, title, description) {
 }
 
 function createDefaultConfigSyncConfig() {
-    // Always on: themes + conf are both cached; no user toggles.
+    // 只同步思源软件配置。主题放在 data 里，由思源自己同步。
     return {
         enabled: true,
-        syncThemes: true,
+        syncThemes: false,
         syncConf: true,
     };
 }
@@ -496,7 +492,6 @@ async function wipeConfigSyncCache(plugin) {
     await apiRemovePath(root);
     await apiEnsureDir(root);
     await apiEnsureDir(`${root}/conf`);
-    await apiEnsureDir(`${root}/themes`);
 }
 
 async function listConfigSyncCacheFiles(plugin) {
@@ -1151,9 +1146,7 @@ async function pushConfigSync(plugin, options = {}) {
         await sleepMs(CONFIG_SYNC_AFTER_SYNC_MS);
         await wipeConfigSyncCache(plugin);
         const localConfHash = await buildLocalConfFingerprint();
-        const localThemesHash = await buildLocalThemesFingerprint();
         const packed = await exportConfToPetal(plugin);
-        const themePack = await exportThemesToPetal(plugin);
         const manifest = {
             version: 1,
             updatedAt: Date.now(),
@@ -1162,10 +1155,6 @@ async function pushConfigSync(plugin, options = {}) {
                 jsonFile: packed.jsonFile || "",
                 exportName: packed.name || "",
                 hash: localConfHash || packed.hash,
-            },
-            themes: {
-                hash: localThemesHash || themePack.hash,
-                names: themePack.names,
             },
             files: [],
         };
@@ -1224,7 +1213,6 @@ async function pullConfigSync(plugin, options = {}) {
             return { skipped: true, reason: "no-pack" };
         }
         await pruneConfigSyncCacheToFileList(plugin, manifest.files);
-        await importThemesFromPetal(plugin);
         await importConfFromPetal(plugin, manifest);
         if (options.notify !== false) {
             hideConfigSyncStatus();
@@ -1232,7 +1220,7 @@ async function pullConfigSync(plugin, options = {}) {
         } else {
             hideConfigSyncStatus();
         }
-        return { ok: true, needConf: true, needThemes: true };
+        return { ok: true, needConf: true, needThemes: false };
     } finally {
         plugin.configSyncBusy = false;
     }
@@ -1242,9 +1230,9 @@ function promptConfigSyncRestart(plugin) {
     const title = plugin?.i18n?.configSyncRestartTitle || "已下载云端配置";
     const text = isMobileFrontend()
         ? (plugin?.i18n?.configSyncRestartDescMobile
-            || "配置与主题已从云端下载。点击确定后将刷新界面。若部分设置未生效，请完全退出后重新打开思源。请在设置中手动选择主题。")
+            || "配置已从云端下载。点击确定后将刷新界面。若部分设置未生效，请完全退出后重新打开思源。")
         : (plugin?.i18n?.configSyncRestartDesc
-            || "配置与主题已从云端下载。点击确定后将自动重启思源以生效。重启后请在设置中手动选择主题。");
+            || "配置已从云端下载。点击确定后将自动重启思源以生效。");
     if (typeof confirm === "function") {
         confirm(title, text, () => {
             restartSiYuanApp();
@@ -1368,6 +1356,12 @@ function createDefaultImageScaleConfig() {
 }
 
 function createDefaultPanguSpacingConfig() {
+    return {
+        enabled: true,
+    };
+}
+
+function createDefaultChildDocWidgetConfig() {
     return {
         enabled: true,
     };
@@ -2442,18 +2436,14 @@ function scheduleDocRefWsUpdate(plugin, event) {
 
 function handleDocRefWsMain(plugin, event) {
     const detail = event.detail ?? event;
-    scheduleChildNavWsRefresh(plugin, event);
     const iconIds = collectChildNavUpdatedIconIds(detail);
     if (iconIds.length) {
         onChildNavDocIconsChanged(iconIds, { forceApi: true });
     }
+    scheduleChildNavWsRefresh(plugin, event);
 }
 
-function handleProtyleDocRefStaticLoad(plugin, event) {
-    handleProtyleChildNavStaticLoad(plugin, event);
-}
-
-function handleProtyleDocRefDynamicLoad(plugin, event) {
+function handleProtyleDocRefDynamicLoad() {
     scheduleRefreshChildNavRefIcons();
 }
 
@@ -2461,8 +2451,10 @@ function handleProtyleDocRefSwitch(plugin, event) {
     const protyle = getProtyleFromEvent(event);
     if (protyle) {
         ensureDocActionBreadcrumbButtons(plugin, protyle);
+        refreshChildNavPanel(plugin, protyle).catch((error) => {
+            console.warn(`${LOG_PREFIX} refreshChildNavPanel failed`, error);
+        });
     }
-    handleProtyleChildNavSwitch(plugin, event);
 }
 
 function handleProtyleDocRefDestroy(plugin, event) {
@@ -2476,17 +2468,6 @@ function handleProtyleDocRefDestroy(plugin, event) {
 
 const LIST_DOCS_SORT_UNASSIGNED = 256;
 
-function createDefaultChildDocWidgetConfig() {
-    return {
-        enabled: true,
-        mode: "direct",
-    };
-}
-
-function normalizeChildNavMode(_mode) {
-    return "direct";
-}
-
 function getNotebookById(id) {
     if (!id) {
         return null;
@@ -2498,146 +2479,6 @@ function getNotebookById(id) {
     return notebooks.find((nb) => nb?.id === id) || null;
 }
 
-function isNotebookBoxDoc(docId, notebook) {
-    return !!(docId && notebook && docId === notebook);
-}
-
-function isNotebookBoxDocPath(path, notebook) {
-    if (!notebook) {
-        return false;
-    }
-    const p = String(path || "").replace(/\\/g, "/");
-    return p === "/"
-        || p === `/${notebook}`
-        || p.toLowerCase() === `/${notebook}.sy`.toLowerCase();
-}
-
-function notebookBoxDocPath(notebook) {
-    return notebook ? `/${notebook}.sy` : "";
-}
-
-function normalizeBoxDocPath(path, notebook) {
-    if (!notebook) {
-        return path;
-    }
-    if (isNotebookBoxDocPath(path, notebook)) {
-        return notebookBoxDocPath(notebook);
-    }
-    return path;
-}
-
-async function getDocPathBySql(docId) {
-    if (!docId) {
-        return null;
-    }
-    try {
-        const rows = await runSqlQuery(
-            `SELECT id, box, path FROM blocks WHERE id = '${escapeSqlId(docId)}' AND type = 'd' LIMIT 1`,
-        );
-        const row = rows?.[0];
-        if (row?.box) {
-            return {
-                notebook: row.box,
-                path: normalizeBoxDocPath(row.path, row.box),
-            };
-        }
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} getDocPathBySql failed`, docId, error);
-    }
-    if (getNotebookById(docId)) {
-        return { notebook: docId, path: notebookBoxDocPath(docId) };
-    }
-    return null;
-}
-
-/** Parent doc storage path: `/a/b/c.sy` -> `/a/b.sy`; `/a.sy` -> null */
-function getParentDocStoragePath(docPath) {
-    const normalized = String(docPath || "").replace(/\\/g, "/");
-    if (!/\.sy$/i.test(normalized)) {
-        return null;
-    }
-    const withoutExt = normalized.replace(/\.sy$/i, "");
-    const idx = withoutExt.lastIndexOf("/");
-    if (idx <= 0) {
-        return null;
-    }
-    return `${withoutExt.slice(0, idx)}.sy`;
-}
-
-/**
- * Logical parent in the file tree. Root-level ordinary docs sit under the
- * notebook box document even though files stay at the notebook root.
- */
-function getLogicalParentDocPath(docPath, notebook) {
-    const physical = getParentDocStoragePath(docPath);
-    if (physical) {
-        return physical;
-    }
-    if (!notebook || isNotebookBoxDocPath(docPath, notebook)) {
-        return null;
-    }
-    const normalized = String(docPath || "").replace(/\\/g, "/");
-    if (!/^\/[^/]+\.sy$/i.test(normalized)) {
-        return null;
-    }
-    return notebookBoxDocPath(notebook);
-}
-
-function toChildNavNode(row) {
-    const title = String(row?.content || "").trim()
-        || stripDocFileName(row?.path)
-        || row?.id;
-    return {
-        id: row.id,
-        title,
-        path: row.path || "",
-        subFileCount: 0,
-        open: false,
-        children: [],
-    };
-}
-
-/**
- * List child docs via SQL only — never call listDocsByPath here.
- * Missing on-disk folders would otherwise toast "open ... file not found".
- */
-async function queryChildNavDescendants(notebook, parentDocPath, parentDocId) {
-    const isBox = isNotebookBoxDoc(parentDocId, notebook)
-        || isNotebookBoxDocPath(parentDocPath, notebook);
-    const folder = isBox ? "/" : toListDocsFolderPath(parentDocPath);
-    const prefix = folder === "/" ? "/" : `${folder}/`;
-    const pathClause = isBox
-        ? ""
-        : ` AND path LIKE '${escapeSqlId(prefix)}%'`;
-    const excludeSelf = parentDocId
-        ? ` AND id != '${escapeSqlId(parentDocId)}'`
-        : "";
-    try {
-        const rows = await runSqlQuery(
-            `SELECT id, content, path FROM blocks WHERE type = 'd' AND box = '${escapeSqlId(notebook)}'${pathClause}${excludeSelf} ORDER BY path ASC LIMIT ${CHILD_NAV_SQL_LIMIT}`,
-        );
-        return Array.isArray(rows) ? rows : [];
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} queryChildNavDescendants failed`, notebook, parentDocPath, error);
-        return [];
-    }
-}
-
-async function buildChildNavTree(docId, mode) {
-    const pathInfo = await getDocPathBySql(docId);
-    if (!pathInfo) {
-        return [];
-    }
-    const parentPath = normalizeBoxDocPath(pathInfo.path, pathInfo.notebook);
-    const rows = await queryChildNavDescendants(pathInfo.notebook, parentPath, docId);
-    const isDirectChild = (row) => (
-        getLogicalParentDocPath(row.path, pathInfo.notebook) === parentPath
-    );
-    return rows.filter(isDirectChild).map(toChildNavNode);
-}
-
-const CHILD_NAV_SYNC_DEBOUNCE_MS = 200;
-const childNavSyncingDocs = new Set();
 let childNavIconRefreshTimer = 0;
 let childNavIconRefreshSeq = 0;
 let childNavSvgRetryCount = 0;
@@ -3066,543 +2907,8 @@ function setChildNavRefStyleEnabled(enabled) {
     scheduleRefreshChildNavRefIcons();
 }
 
-function untitledChildNavTitle() {
-    return activeFhelperPlugin?.i18n?.newChildDocNavRefUntitled
-        || "未命名文档";
-}
-
-function isGenericUntitledTitle(title) {
-    const text = String(title || "").replace(/[\u200b\ufeff]/g, "").trim();
-    if (!text) {
-        return true;
-    }
-    const aliases = new Set(["未命名", "未命名文档", "Untitled", "Untitled document"]);
-    const siyuanUntitled = String(window.siyuan?.languages?.untitled || "").trim();
-    if (siyuanUntitled) {
-        aliases.add(siyuanUntitled);
-    }
-    aliases.add(untitledChildNavTitle());
-    return aliases.has(text);
-}
-
-function childNavAnchorTitle(title) {
-    if (isGenericUntitledTitle(title)) {
-        return untitledChildNavTitle();
-    }
-    return String(title || "").replace(/[\u200b\ufeff]/g, "").trim();
-}
-
-function escapeChildNavTitle(title) {
-    return String(title || "").replace(/'/g, "’").replace(/\r?\n/g, " ");
-}
-
-function childNavRefMarkdown(childId, title) {
-    // H5 heading wrapping a document block-ref; appears natively in outline.
-    return `##### ((${childId} '${escapeChildNavTitle(childNavAnchorTitle(title))}'))`;
-}
-
-function insertedBlockIdFromResponse(response) {
-    const ops = response?.data?.[0]?.doOperations;
-    if (Array.isArray(ops)) {
-        const hit = ops.find((op) => op?.id && (op.action === "insert" || op.action === "update" || !op.action));
-        if (hit?.id) {
-            return hit.id;
-        }
-        if (ops[0]?.id) {
-            return ops[0].id;
-        }
-    }
-    return null;
-}
-
-async function appendMarkdownBlock({ parentID, markdown, attrs }) {
-    const response = await fetchSyncPost("/api/block/appendBlock", {
-        dataType: "markdown",
-        data: markdown,
-        parentID,
-    });
-    const newId = insertedBlockIdFromResponse(response);
-    if (!newId) {
-        console.warn(`${LOG_PREFIX} appendMarkdownBlock: no new id`, response);
-        return null;
-    }
-    if (attrs) {
-        await fetchSyncPost("/api/attr/setBlockAttrs", {
-            id: newId,
-            attrs,
-        });
-    }
-    return newId;
-}
-
-function titleFromChildNavContent(content, fallback) {
-    const text = String(content || "").replace(/[\u200b\ufeff]/g, "").trim();
-    const quoted = text.match(/\(\([^)]*'([^']*)'\)\)/);
-    if (quoted?.[1]) {
-        return quoted[1];
-    }
-    const wiki = text.match(/\[\[([^\]]+)\]\]/);
-    if (wiki?.[1]) {
-        return wiki[1].split("|").pop().trim();
-    }
-    return text || fallback || "";
-}
-
-async function queryChildNavEndFenceIds(docId) {
-    if (!docId) {
-        return [];
-    }
-    try {
-        const rows = await runSqlQuery(
-            `SELECT b.id AS id FROM attributes a JOIN blocks b ON b.id = a.block_id WHERE a.name = '${CHILD_NAV_END_ATTR}' AND a.value = '1' AND b.root_id = '${escapeSqlId(docId)}' ORDER BY b.sort ASC LIMIT ${CHILD_NAV_SQL_LIMIT}`,
-        );
-        return (Array.isArray(rows) ? rows : []).map((row) => row?.id).filter(Boolean);
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} queryChildNavEndFenceIds failed`, docId, error);
-        return [];
-    }
-}
-
-async function deleteLegacyChildNavFences(docId) {
-    const ids = await queryChildNavEndFenceIds(docId);
-    for (const id of ids) {
-        try {
-            await deleteAutoChildNavBlock(id);
-        } catch (error) {
-            console.warn(`${LOG_PREFIX} deleteLegacyChildNavFences failed`, id, error);
-        }
-    }
-}
-
-async function queryAutoChildNavBlocks(docId) {
-    if (!docId) {
-        return [];
-    }
-    try {
-        const rows = await runSqlQuery(
-            `SELECT b.id AS id, b.sort AS sort, b.content AS content, b.type AS type, b.subtype AS subtype, t.value AS target FROM attributes f JOIN blocks b ON b.id = f.block_id LEFT JOIN attributes t ON t.block_id = f.block_id AND t.name = '${CHILD_NAV_TARGET_ATTR}' WHERE f.name = '${CHILD_NAV_FLAG_ATTR}' AND f.value = '1' AND b.root_id = '${escapeSqlId(docId)}' ORDER BY b.sort ASC, b.created ASC LIMIT ${CHILD_NAV_SQL_LIMIT}`,
-        );
-        const list = Array.isArray(rows) ? rows : [];
-        const missing = list.filter((row) => row?.id && !row.target);
-        if (missing.length) {
-            const inList = missing.map((row) => `'${escapeSqlId(row.id)}'`).join(",");
-            const refs = await runSqlQuery(
-                `SELECT block_id, def_block_id FROM refs WHERE block_id IN (${inList}) LIMIT ${CHILD_NAV_SQL_LIMIT}`,
-            );
-            const byBlock = new Map((Array.isArray(refs) ? refs : []).map((row) => [row.block_id, row.def_block_id]));
-            list.forEach((row) => {
-                if (!row.target) {
-                    row.target = byBlock.get(row.id) || "";
-                }
-            });
-        }
-        return list.filter((row) => row?.id);
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} queryAutoChildNavBlocks failed`, docId, error);
-        return [];
-    }
-}
-
-async function updateAutoChildNavBlockMarkdown(blockId, markdown) {
-    if (!blockId || !markdown) {
-        return;
-    }
-    await fetchSyncPost("/api/block/updateBlock", {
-        dataType: "markdown",
-        data: markdown,
-        id: blockId,
-    });
-}
-
-function isChildNavH5Block(block) {
-    return block?.type === "h" && String(block?.subtype || "").toLowerCase() === "h5";
-}
-
-async function insertAutoChildNavBlock({ parentID, childId, title }) {
-    return appendMarkdownBlock({
-        parentID,
-        markdown: childNavRefMarkdown(childId, title),
-        attrs: childNavBlockAttrs(childId),
-    });
-}
-
-function newSiYuanNodeId() {
-    if (typeof window.Lute?.NewNodeID === "function") {
-        return window.Lute.NewNodeID();
-    }
-    const now = new Date();
-    const pad = (n, width = 2) => String(n).padStart(width, "0");
-    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const rand = Math.random().toString(36).slice(2, 9);
-    return `${ts}-${rand}`;
-}
-
-function buildChildDocCreatePath(parentDocPath, newDocId) {
-    const base = String(parentDocPath || "").replace(/\.sy$/i, "");
-    if (!base) {
-        return `/${newDocId}.sy`;
-    }
-    return `${base}/${newDocId}.sy`;
-}
-
-function getCurrentBlockIdFromProtyle(protyle) {
-    const p = unwrapProtyle(protyle);
-    try {
-        const sel = window.getSelection?.();
-        const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
-        const node = range?.startContainer;
-        const el = node?.nodeType === 1 ? node : node?.parentElement;
-        const block = el?.closest?.("[data-node-id]");
-        if (block && !block.classList?.contains("protyle-title")) {
-            return block.getAttribute("data-node-id");
-        }
-    } catch (error) {
-        // ignore
-    }
-    const focus = p?.wysiwyg?.element?.querySelector?.(".protyle-wysiwyg--select[data-node-id], [data-node-id].protyle-wysiwyg--select");
-    return focus?.getAttribute?.("data-node-id") || null;
-}
-
-function childNavBlockAttrs(childId) {
-    return {
-        [CHILD_NAV_FLAG_ATTR]: "1",
-        [CHILD_NAV_TARGET_ATTR]: childId,
-    };
-}
-
-async function applyChildNavAttrs(blockId, childId) {
-    if (!blockId || !childId) {
-        return;
-    }
-    await fetchSyncPost("/api/attr/setBlockAttrs", {
-        id: blockId,
-        attrs: childNavBlockAttrs(childId),
-    });
-}
-
-function clearSlashInput(protyle) {
-    const p = unwrapProtyle(protyle);
-    if (!p || typeof p.insert !== "function") {
-        return;
-    }
-    try {
-        const caret = window.Lute?.Caret || "\ufeff";
-        p.insert(caret, false, true);
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} clearSlashInput failed`, error);
-    }
-}
-
-async function insertMarkdownBlockAtCursor({ previousID, parentID, markdown, attrs }) {
-    const payload = {
-        dataType: "markdown",
-        data: markdown,
-    };
-    if (previousID) {
-        payload.previousID = previousID;
-    } else if (parentID) {
-        payload.parentID = parentID;
-    } else {
-        throw new Error("insertMarkdownBlockAtCursor: missing previousID/parentID");
-    }
-    const response = await fetchSyncPost("/api/block/insertBlock", payload);
-    const newId = insertedBlockIdFromResponse(response);
-    if (!newId) {
-        console.warn(`${LOG_PREFIX} insertMarkdownBlockAtCursor: no new id`, response);
-        return null;
-    }
-    if (attrs) {
-        await fetchSyncPost("/api/attr/setBlockAttrs", {
-            id: newId,
-            attrs,
-        });
-    }
-    return newId;
-}
-
-async function replaceSlashLineWithChildNavRef({ blockId, parentID, childId, title }) {
-    const markdown = childNavRefMarkdown(childId, title);
-    if (blockId) {
-        await updateAutoChildNavBlockMarkdown(blockId, markdown);
-        await applyChildNavAttrs(blockId, childId);
-        return blockId;
-    }
-    return insertMarkdownBlockAtCursor({
-        parentID,
-        markdown,
-        attrs: childNavBlockAttrs(childId),
-    });
-}
-
-/** Mimic built-in「新建子文档并引用」, but mark the ref as auto child-nav. */
-async function createChildDocNavRefFromSlash(plugin, protyle) {
-    const p = unwrapProtyle(protyle);
-    const notebookId = p?.notebookId;
-    const docPath = p?.path;
-    const rootId = getProtyleDocId(p);
-    if (!notebookId || !docPath || !rootId) {
-        showMessage(plugin.i18n.cannotResolveDoc || "无法识别当前文档");
-        return;
-    }
-
-    const slashBlockId = getCurrentBlockIdFromProtyle(p);
-    clearSlashInput(p);
-    const newSubDocId = newSiYuanNodeId();
-    const createPath = buildChildDocCreatePath(docPath, newSubDocId);
-    const title = untitledChildNavTitle();
-
-    const created = await fetchSyncPost("/api/filetree/createDoc", {
-        notebook: notebookId,
-        path: createPath,
-        title: "",
-        md: "",
-    });
-    if (created?.code && created.code !== 0) {
-        throw new Error(created.msg || "createDoc failed");
-    }
-
-    await replaceSlashLineWithChildNavRef({
-        blockId: slashBlockId,
-        parentID: rootId,
-        childId: newSubDocId,
-        title,
-    });
-
-    scheduleRefreshChildNavRefIcons();
-
-    openTab({
-        app: plugin.app,
-        doc: {
-            id: newSubDocId,
-            action: [
-                Constants.CB_GET_CONTEXT || "cb-get-context",
-                Constants.CB_GET_OPENNEW || "cb-get-opennew",
-            ],
-        },
-    });
-}
-
-function registerNewChildDocNavRefSlash(plugin) {
-    const label = plugin.i18n.newChildDocNavRef
-        || "新建子文档块";
-    plugin.protyleSlash = [
-        {
-            id: NEW_CHILD_DOC_NAV_REF_SLASH_ID,
-            filter: [
-                label,
-                "新建子文档块",
-                "xinjianziwendangkuai",
-                "xjzwdk",
-                "create child doc block",
-                "new child doc block",
-                "child doc nav ref",
-            ],
-            html: `<div class="b3-list-item__first"><svg class="b3-list-item__graphic"><use xlink:href="#iconFile"></use></svg><span class="b3-list-item__text">${label}</span></div>`,
-            callback: (protyle) => {
-                createChildDocNavRefFromSlash(plugin, protyle).catch((error) => {
-                    console.warn(`${LOG_PREFIX} createChildDocNavRefFromSlash failed`, error);
-                    showMessage(plugin.i18n.newChildDocNavRefFailed || "新建子文档块失败");
-                });
-            },
-        },
-        ...(Array.isArray(plugin.protyleSlash)
-            ? plugin.protyleSlash.filter((item) => item?.id !== NEW_CHILD_DOC_NAV_REF_SLASH_ID)
-            : []),
-    ];
-}
-
-async function deleteAutoChildNavBlock(blockId) {
-    if (!blockId) {
-        return;
-    }
-    await fetchSyncPost("/api/block/deleteBlock", { id: blockId });
-}
-
-async function syncChildNavRefBlocks(plugin, docId) {
-    if (!docId || childNavSyncingDocs.has(docId)) {
-        return;
-    }
-    childNavSyncingDocs.add(docId);
-    try {
-        await syncChildNavRefBlocksUnlocked(plugin, docId);
-    } finally {
-        childNavSyncingDocs.delete(docId);
-    }
-}
-
-async function notifyChildNavAutoSync(plugin, docId, created, deleted) {
-    const i18n = plugin?.i18n;
-    if (!i18n || (created <= 0 && deleted <= 0)) {
-        return;
-    }
-    const doc = await getDocDisplayTitle(docId);
-    if (created > 0 && deleted > 0) {
-        showMessage(formatTemplateMessage(i18n, "childNavAutoCreatedAndDeleted", { doc, created, deleted }));
-        return;
-    }
-    if (created > 0) {
-        showMessage(formatTemplateMessage(i18n, "childNavAutoCreated", { doc, count: created }));
-        return;
-    }
-    showMessage(formatTemplateMessage(i18n, "childNavAutoDeleted", { doc, count: deleted }));
-}
-
-async function syncChildNavRefBlocksUnlocked(plugin, docId) {
-    if (!docId) {
-        return;
-    }
-    await deleteLegacyChildNavFences(docId);
-    const children = await buildChildNavTree(docId);
-    const childById = new Map(children.map((node) => [node.id, node]));
-    const childIds = new Set(childById.keys());
-    const autoBlocks = await queryAutoChildNavBlocks(docId);
-    let deleted = 0;
-    let created = 0;
-    for (const block of autoBlocks) {
-        if (!block.target || !childIds.has(block.target)) {
-            try {
-                await deleteAutoChildNavBlock(block.id);
-                deleted += 1;
-            } catch (error) {
-                console.warn(`${LOG_PREFIX} deleteAutoChildNavBlock failed`, block.id, error);
-            }
-        }
-    }
-    const remaining = await queryAutoChildNavBlocks(docId);
-    for (const block of remaining) {
-        if (!block.target) {
-            continue;
-        }
-        const child = childById.get(block.target);
-        const currentTitle = titleFromChildNavContent(block.content, "");
-        const title = childNavAnchorTitle(child?.title || currentTitle || block.target);
-        const needH5 = !isChildNavH5Block(block);
-        const needUntitledFix = isGenericUntitledTitle(currentTitle) && title !== currentTitle;
-        if (!needH5 && !needUntitledFix) {
-            continue;
-        }
-        try {
-            await updateAutoChildNavBlockMarkdown(block.id, childNavRefMarkdown(block.target, title));
-        } catch (error) {
-            console.warn(`${LOG_PREFIX} upgrade child-nav block failed`, block.id, error);
-        }
-    }
-    const afterUpgrade = await queryAutoChildNavBlocks(docId);
-    const have = new Set(afterUpgrade.map((block) => block.target).filter(Boolean));
-    const missing = children.filter((node) => !have.has(node.id));
-    if (missing.length) {
-        for (const child of missing) {
-            try {
-                const newId = await insertAutoChildNavBlock({
-                    parentID: docId,
-                    childId: child.id,
-                    title: child.title,
-                });
-                if (newId) {
-                    created += 1;
-                }
-            } catch (error) {
-                console.warn(`${LOG_PREFIX} insertAutoChildNavBlock failed`, child.id, error);
-            }
-        }
-    }
-    scheduleRefreshChildNavRefIcons();
-    await notifyChildNavAutoSync(plugin, docId, created, deleted);
-}
-
 function removeLegacyChildNavHosts(root = document) {
     root.querySelectorAll?.(".fhelper-child-nav")?.forEach((el) => el.remove());
-}
-
-function scheduleSyncChildNavRefs(plugin, protyleOrDocId) {
-    if (!plugin?.config?.childDocWidget?.enabled) {
-        return;
-    }
-    const docId = typeof protyleOrDocId === "string"
-        ? protyleOrDocId
-        : getProtyleDocId(protyleOrDocId);
-    if (!docId) {
-        return;
-    }
-    if (!plugin.childNavMountTimers) {
-        plugin.childNavMountTimers = new Map();
-    }
-    const prev = plugin.childNavMountTimers.get(docId);
-    if (prev) {
-        window.clearTimeout(prev);
-    }
-    const timer = window.setTimeout(() => {
-        plugin.childNavMountTimers.delete(docId);
-        syncChildNavRefBlocks(plugin, docId).catch((error) => {
-            console.warn(`${LOG_PREFIX} syncChildNavRefBlocks failed`, docId, error);
-        });
-    }, CHILD_NAV_SYNC_DEBOUNCE_MS);
-    plugin.childNavMountTimers.set(docId, timer);
-}
-
-function scheduleMountChildNav(plugin, protyle) {
-    scheduleSyncChildNavRefs(plugin, protyle);
-}
-
-function syncAllChildNavPanels(plugin) {
-    removeLegacyChildNavHosts();
-    setChildNavRefStyleEnabled(true);
-    const enabled = plugin?.config?.childDocWidget?.enabled === true;
-    if (!enabled) {
-        return;
-    }
-    getAllEditor().forEach(({ protyle }) => scheduleSyncChildNavRefs(plugin, protyle));
-}
-
-function refreshOpenChildNavWidgets(plugin) {
-    syncAllChildNavPanels(plugin);
-}
-
-function shouldHandleChildNavWs(cmd) {
-    if (!cmd) {
-        return false;
-    }
-    const key = String(cmd).toLowerCase();
-    return [
-        "createdoc",
-        "removedoc",
-        "movedoc",
-        "movedocs",
-        "renamedoc",
-        "reloadfiletree",
-    ].some((item) => key.includes(item));
-}
-
-function scheduleChildNavWsRefresh(plugin, event) {
-    if (!plugin.config.childDocWidget?.enabled) {
-        return;
-    }
-    const detail = event.detail ?? event;
-    if (!shouldHandleChildNavWs(detail?.cmd)) {
-        return;
-    }
-    if (plugin.childNavWsTimer) {
-        window.clearTimeout(plugin.childNavWsTimer);
-    }
-    plugin.childNavWsTimer = window.setTimeout(() => {
-        plugin.childNavWsTimer = null;
-        refreshOpenChildNavWidgets(plugin);
-    }, 220);
-}
-
-function handleProtyleChildNavStaticLoad(plugin, event) {
-    removeLegacyChildNavHosts();
-    scheduleSyncChildNavRefs(plugin, getProtyleFromEvent(event));
-    scheduleRefreshChildNavRefIcons();
-}
-
-function handleProtyleChildNavSwitch(plugin, event) {
-    scheduleSyncChildNavRefs(plugin, getProtyleFromEvent(event));
-    scheduleRefreshChildNavRefIcons();
-}
-
-function scheduleEnsureChildNavWidget(plugin, protyle) {
-    scheduleSyncChildNavRefs(plugin, protyle);
 }
 
 function unwrapProtyle(protyle) {
@@ -3770,77 +3076,619 @@ function toListDocsFolderPath(storagePath) {
     return path || "/";
 }
 
-/*
-function getGlobalFileTreeSortMode() {
-    const raw = window.siyuan?.config?.fileTree?.sort;
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : LIST_DOCS_SORT_UNASSIGNED;
+const CHILD_NAV_SQL_LIMIT = 512;
+const CHILD_NAV_PANEL_STYLE_ID = "fhelper-child-nav-panel-css";
+const CHILD_NAV_PANEL_CLASS = "fhelper-child-nav";
+const childNavPanelSeq = new WeakMap();
+
+function isNotebookBoxDoc(docId, notebook) {
+    return !!(docId && notebook && docId === notebook);
 }
 
-async function fetchNotebookSortMode(notebookId) {
-    if (!notebookId) {
+function isNotebookBoxDocPath(path, notebook) {
+    if (!notebook) {
+        return false;
+    }
+    const normalized = String(path || "").replace(/\\/g, "/");
+    return normalized === "/"
+        || normalized === `/${notebook}`
+        || normalized.toLowerCase() === `/${notebook}.sy`.toLowerCase();
+}
+
+function notebookBoxDocPath(notebook) {
+    return notebook ? `/${notebook}.sy` : "";
+}
+
+function normalizeBoxDocPath(path, notebook) {
+    if (!notebook) {
+        return path;
+    }
+    if (isNotebookBoxDocPath(path, notebook)) {
+        return notebookBoxDocPath(notebook);
+    }
+    return path;
+}
+
+async function getDocPathBySql(docId) {
+    if (!docId) {
         return null;
     }
-    if (notebookSortModeCache.has(notebookId)) {
-        return notebookSortModeCache.get(notebookId);
-    }
-    let mode = null;
     try {
-        const response = await fetchSyncPost("/api/notebook/getNotebookConf", { notebook: notebookId });
-        const parsed = Number(response?.data?.conf?.sortMode);
-        mode = Number.isFinite(parsed) ? parsed : null;
+        const rows = await runSqlQuery(
+            `SELECT id, box, path FROM blocks WHERE id = '${escapeSqlId(docId)}' AND type = 'd' LIMIT 1`,
+        );
+        const row = rows?.[0];
+        if (row?.box) {
+            return {
+                notebook: row.box,
+                path: normalizeBoxDocPath(row.path, row.box),
+            };
+        }
     } catch (error) {
-        console.warn(`${LOG_PREFIX} fetchNotebookSortMode failed`, notebookId, error);
+        console.warn(`${LOG_PREFIX} getDocPathBySql failed`, docId, error);
     }
-    notebookSortModeCache.set(notebookId, mode);
-    return mode;
+    if (getNotebookById(docId)) {
+        return { notebook: docId, path: notebookBoxDocPath(docId) };
+    }
+    return null;
 }
 
-function formatSortModeLabel(mode) {
-    const labels = {
-        0: "名称字母升序",
-        1: "名称字母降序",
-        2: "更新时间升序",
-        3: "更新时间降序",
-        4: "名称自然升序",
-        5: "名称自然降序",
-        6: "自定义排序",
-        7: "引用数升序",
-        8: "引用数降序",
-        9: "创建时间升序",
-        10: "创建时间降序",
-        11: "文件大小升序",
-        12: "文件大小降序",
-        13: "子文档数升序",
-        14: "子文档数降序",
-        15: "使用文档树排序规则",
-        256: "未指定",
+function getParentDocStoragePath(docPath) {
+    const normalized = String(docPath || "").replace(/\\/g, "/");
+    if (!/\.sy$/i.test(normalized)) {
+        return null;
+    }
+    const withoutExt = normalized.replace(/\.sy$/i, "");
+    const idx = withoutExt.lastIndexOf("/");
+    if (idx <= 0) {
+        return null;
+    }
+    return `${withoutExt.slice(0, idx)}.sy`;
+}
+
+function getLogicalParentDocPath(docPath, notebook) {
+    const physical = getParentDocStoragePath(docPath);
+    if (physical) {
+        return physical;
+    }
+    if (!notebook || isNotebookBoxDocPath(docPath, notebook)) {
+        return null;
+    }
+    const normalized = String(docPath || "").replace(/\\/g, "/");
+    if (!/^\/[^/]+\.sy$/i.test(normalized)) {
+        return null;
+    }
+    return notebookBoxDocPath(notebook);
+}
+
+function toChildNavNode(row) {
+    const title = String(row?.content || "").trim()
+        || stripDocFileName(row?.path)
+        || row?.id;
+    return {
+        id: row.id,
+        title,
+        path: row.path || "",
     };
-    if (mode === null || mode === undefined || Number.isNaN(Number(mode))) {
-        return "unknown";
-    }
-    const key = Number(mode);
-    return labels[key] !== undefined ? `${labels[key]} (${key})` : String(key);
 }
 
-function formatChildDocLogList(children) {
-    return (children || []).map((child) => ({
-        id: child.id,
-        title: child.content || child.id,
+async function queryChildNavDescendants(notebook, parentDocPath, parentDocId) {
+    const isBox = isNotebookBoxDoc(parentDocId, notebook)
+        || isNotebookBoxDocPath(parentDocPath, notebook);
+    const folder = isBox ? "/" : toListDocsFolderPath(parentDocPath);
+    const prefix = folder === "/" ? "/" : `${folder}/`;
+    const pathClause = isBox ? "" : ` AND path LIKE '${escapeSqlId(prefix)}%'`;
+    const excludeSelf = parentDocId ? ` AND id != '${escapeSqlId(parentDocId)}'` : "";
+    try {
+        const rows = await runSqlQuery(
+            `SELECT id, content, path FROM blocks WHERE type = 'd' AND box = '${escapeSqlId(notebook)}'${pathClause}${excludeSelf} ORDER BY path ASC LIMIT ${CHILD_NAV_SQL_LIMIT}`,
+        );
+        return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+        console.warn(`${LOG_PREFIX} queryChildNavDescendants failed`, notebook, parentDocPath, error);
+        return [];
+    }
+}
+
+async function buildChildNavTree(docId) {
+    const pathInfo = await getDocPathBySql(docId);
+    if (!pathInfo) {
+        return [];
+    }
+    const parentPath = normalizeBoxDocPath(pathInfo.path, pathInfo.notebook);
+    const rows = await queryChildNavDescendants(pathInfo.notebook, parentPath, docId);
+    return rows
+        .filter((row) => getLogicalParentDocPath(row.path, pathInfo.notebook) === parentPath)
+        .map(toChildNavNode);
+}
+
+function ensureChildNavPanelCss() {
+    upsertHeadStyle(CHILD_NAV_PANEL_STYLE_ID, `
+.protyle-content > .${CHILD_NAV_PANEL_CLASS} {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 2px var(--b3-protyle-padding-right, 24px) 8px var(--b3-protyle-padding-left, 24px);
+}
+.protyle-content > .${CHILD_NAV_PANEL_CLASS} .fhelper-child-nav__item {
+    max-width: 100%;
+    margin: 0;
+    padding: 2px 6px;
+    border: 0;
+    border-radius: var(--b3-border-radius);
+    background: transparent;
+    color: var(--b3-theme-on-surface);
+    font: inherit;
+    line-height: 1.6;
+    text-align: left;
+    cursor: pointer;
+}
+.protyle-content > .${CHILD_NAV_PANEL_CLASS} .fhelper-child-nav__item:hover {
+    background-color: var(--b3-list-hover);
+}
+`);
+}
+
+function childNavContentHost(protyle) {
+    const editor = unwrapProtyle(protyle);
+    const content = editor?.contentElement || editor?.element?.querySelector?.(".protyle-content");
+    const wysiwyg = editor?.wysiwyg?.element;
+    if (!content || !wysiwyg || !content.contains(wysiwyg)) {
+        return null;
+    }
+    return { editor, content, wysiwyg };
+}
+
+function removeChildNavPanel(protyle) {
+    const host = childNavContentHost(protyle);
+    host?.content.querySelector(`:scope > .${CHILD_NAV_PANEL_CLASS}`)?.remove();
+}
+
+function openChildDoc(plugin, docId) {
+    if (!docId) {
+        return;
+    }
+    openTab({
+        app: plugin.app,
+        doc: {
+            id: docId,
+            action: [
+                Constants.CB_GET_CONTEXT || "cb-get-context",
+                Constants.CB_GET_OPENNEW || "cb-get-opennew",
+            ],
+        },
+    });
+}
+
+async function refreshChildNavPanel(plugin, protyle) {
+    const host = childNavContentHost(protyle);
+    if (!host) {
+        return;
+    }
+    const seq = (childNavPanelSeq.get(host.content) || 0) + 1;
+    childNavPanelSeq.set(host.content, seq);
+    const docId = getProtyleDocId(host.editor);
+    if (!plugin?.config?.childDocWidget?.enabled || !docId) {
+        removeChildNavPanel(host.editor);
+        return;
+    }
+    const children = await buildChildNavTree(docId);
+    if (childNavPanelSeq.get(host.content) !== seq || getProtyleDocId(host.editor) !== docId) {
+        return;
+    }
+    if (!children.length) {
+        removeChildNavPanel(host.editor);
+        return;
+    }
+    ensureChildNavPanelCss();
+    let panel = host.content.querySelector(`:scope > .${CHILD_NAV_PANEL_CLASS}`);
+    if (!panel) {
+        panel = document.createElement("div");
+        panel.className = CHILD_NAV_PANEL_CLASS;
+        panel.setAttribute("contenteditable", "false");
+        host.content.insertBefore(panel, host.wysiwyg);
+    }
+    panel.replaceChildren();
+    children.forEach((child) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "fhelper-child-nav__item";
+        button.textContent = child.title || child.id;
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openChildDoc(plugin, child.id);
+        });
+        panel.appendChild(button);
+    });
+}
+
+function refreshAllChildNavPanels(plugin) {
+    ensureChildNavPanelCss();
+    getAllEditor().forEach(({ protyle }) => {
+        refreshChildNavPanel(plugin, protyle).catch((error) => {
+            console.warn(`${LOG_PREFIX} refreshChildNavPanel failed`, error);
+        });
+    });
+}
+
+function shouldHandleChildNavWs(cmd) {
+    const key = String(cmd || "").toLowerCase();
+    if (!key) {
+        return false;
+    }
+    return ["createdoc", "removedoc", "movedoc", "movedocs", "renamedoc", "reloadfiletree"]
+        .some((item) => key.includes(item));
+}
+
+function scheduleChildNavWsRefresh(plugin, event) {
+    if (!plugin?.config?.childDocWidget?.enabled) {
+        return;
+    }
+    const detail = event?.detail ?? event;
+    if (!shouldHandleChildNavWs(detail?.cmd)) {
+        return;
+    }
+    if (plugin.childNavWsTimer) {
+        window.clearTimeout(plugin.childNavWsTimer);
+    }
+    plugin.childNavWsTimer = window.setTimeout(() => {
+        plugin.childNavWsTimer = null;
+        refreshAllChildNavPanels(plugin);
+    }, 220);
+}
+
+function escapeChildRefTitle(title) {
+    return String(title || "").replace(/'/g, "’").replace(/\r?\n/g, " ");
+}
+
+function childRefMarkdown(child) {
+    return `((${child.id} '${escapeChildRefTitle(child.title || child.id)}'))`;
+}
+
+async function queryReferencedDocIds(docId, protyle) {
+    const ids = new Set();
+    try {
+        const rows = await runSqlQuery(
+            `SELECT DISTINCT def_block_id AS id FROM refs WHERE root_id = '${escapeSqlId(docId)}' LIMIT ${CHILD_NAV_SQL_LIMIT}`,
+        );
+        (rows || []).forEach((row) => {
+            if (row?.id) {
+                ids.add(row.id);
+            }
+        });
+    } catch (error) {
+        console.warn(`${LOG_PREFIX} queryReferencedDocIds failed`, docId, error);
+    }
+    unwrapProtyle(protyle)?.wysiwyg?.element
+        ?.querySelectorAll('span[data-type~="block-ref"][data-id]')
+        ?.forEach((span) => {
+            const id = span.getAttribute("data-id");
+            if (id) {
+                ids.add(id);
+            }
+        });
+    return ids;
+}
+
+async function handleAppendUnrefChildrenForProtyle(plugin, protyle) {
+    if (plugin.appendUnrefChildrenBusy) {
+        return;
+    }
+    plugin.appendUnrefChildrenBusy = true;
+    try {
+        const editor = unwrapProtyle(protyle) || findProtyleByElement(protyle?.element);
+        const { docId } = resolveProtyleDocId(editor);
+        if (!docId) {
+            showMessage(plugin.i18n.cannotResolveDoc);
+            return;
+        }
+        const doc = await getDocDisplayTitle(docId, editor);
+        const children = await buildChildNavTree(docId);
+        const referenced = await queryReferencedDocIds(docId, editor);
+        const missing = children.filter((child) => child?.id && child.id !== docId && !referenced.has(child.id));
+        if (!missing.length) {
+            showMessage(formatTemplateMessage(plugin.i18n, "appendUnrefChildrenNone", { doc }));
+            return;
+        }
+        const response = await fetchSyncPost("/api/block/appendBlock", {
+            dataType: "markdown",
+            data: missing.map(childRefMarkdown).join("\n\n"),
+            parentID: docId,
+        });
+        if (response && typeof response.code === "number" && response.code !== 0) {
+            throw new Error(response.msg || "appendBlock failed");
+        }
+        showMessage(formatTemplateMessage(plugin.i18n, "appendUnrefChildrenDone", { doc, count: missing.length }));
+    } catch (error) {
+        console.warn(`${LOG_PREFIX} appendUnrefChildren failed`, error);
+        showMessage(plugin.i18n.appendUnrefChildrenFailed);
+    } finally {
+        plugin.appendUnrefChildrenBusy = false;
+    }
+}
+
+async function listUnreferencedDirectChildren(docId, protyle) {
+    const children = await buildChildNavTree(docId);
+    const referenced = await queryReferencedDocIds(docId, protyle);
+    return children.filter((child) => child?.id && child.id !== docId && !referenced.has(child.id));
+}
+
+function handleDeleteUnrefChildrenForProtyle(plugin, protyle) {
+    if (plugin.deleteUnrefChildrenBusy) {
+        return;
+    }
+    const editor = unwrapProtyle(protyle) || findProtyleByElement(protyle?.element);
+    const { docId } = resolveProtyleDocId(editor) || {};
+    if (!docId) {
+        showMessage(plugin.i18n.cannotResolveDoc);
+        return;
+    }
+    listUnreferencedDirectChildren(docId, editor).then(async (missing) => {
+        const doc = await getDocDisplayTitle(docId, editor);
+        if (!missing.length) {
+            showMessage(formatTemplateMessage(plugin.i18n, "deleteUnrefChildrenNone", { doc }));
+            return;
+        }
+        confirm(
+            plugin.i18n.deleteUnrefChildrenConfirmTitle,
+            formatTemplateMessage(plugin.i18n, "deleteUnrefChildrenConfirm", { count: missing.length, doc }),
+            () => {
+                if (plugin.deleteUnrefChildrenBusy) {
+                    return;
+                }
+                plugin.deleteUnrefChildrenBusy = true;
+                deleteUnreferencedChildDocs(missing).then(() => {
+                    refreshAllChildNavPanels(plugin);
+                    showMessage(formatTemplateMessage(plugin.i18n, "deleteUnrefChildrenDone", { count: missing.length }));
+                }).catch((error) => {
+                    console.warn(`${LOG_PREFIX} deleteUnrefChildren failed`, error);
+                    showMessage(plugin.i18n.deleteUnrefChildrenFailed);
+                }).finally(() => {
+                    plugin.deleteUnrefChildrenBusy = false;
+                });
+            },
+        );
+    }).catch((error) => {
+        console.warn(`${LOG_PREFIX} deleteUnrefChildren failed`, error);
+        showMessage(plugin.i18n.deleteUnrefChildrenFailed);
+    });
+}
+
+async function deleteUnreferencedChildDocs(children) {
+    const docs = [];
+    for (const child of children) {
+        const pathInfo = await getDocPathById(child.id);
+        docs.push({ id: child.id, path: pathInfo?.path || "" });
+    }
+    docs.sort((a, b) => b.path.length - a.path.length);
+    for (const doc of docs) {
+        const response = await fetchSyncPost("/api/filetree/removeDocByID", { id: doc.id });
+        if (response && typeof response.code === "number" && response.code !== 0) {
+            throw new Error(response.msg || "removeDocByID failed");
+        }
+    }
+    await clearDocUndoHistory(docs.map((doc) => doc.id));
+    return docs.length;
+}
+
+function collectDirectDocRefTargets(blockEl) {
+    if (!(blockEl instanceof Element)) {
+        return [];
+    }
+    const ids = [];
+    blockEl.querySelectorAll('span[data-type~="block-ref"][data-subtype="d"][data-id]').forEach((span) => {
+        if (span.closest("[data-node-id]") !== blockEl) {
+            return;
+        }
+        const id = span.getAttribute("data-id");
+        if (id) {
+            ids.push(id);
+        }
+    });
+    return [...new Set(ids)];
+}
+
+function docRefBlocksFromSelection(blockElements) {
+    const seen = new Set();
+    const result = [];
+    Array.from(blockElements || []).forEach((el) => {
+        if (!(el instanceof Element)) {
+            return;
+        }
+        const block = el.matches?.("[data-node-id]") ? el : el.closest?.("[data-node-id]");
+        const blockId = block?.getAttribute?.("data-node-id");
+        if (!block || !blockId || seen.has(blockId)) {
+            return;
+        }
+        const targets = collectDirectDocRefTargets(block);
+        if (!targets.length) {
+            return;
+        }
+        seen.add(blockId);
+        result.push({ block, blockId, targets });
+    });
+    return result;
+}
+
+async function moveDocsAsChildren(parentId, docIds) {
+    const response = await fetchSyncPost("/api/filetree/moveDocsByID", {
+        fromIDs: docIds,
+        toID: parentId,
+    });
+    if (response && typeof response.code === "number" && response.code !== 0) {
+        throw new Error(response.msg || "moveDocsByID failed");
+    }
+    return docIds.length;
+}
+
+async function handleMoveSelectedDocRefs(plugin, protyle, blocks) {
+    if (plugin.moveDocRefBusy) {
+        return;
+    }
+    plugin.moveDocRefBusy = true;
+    try {
+        const editor = unwrapProtyle(protyle) || findProtyleByElement(protyle?.element);
+        const { docId } = resolveProtyleDocId(editor);
+        if (!docId) {
+            showMessage(plugin.i18n.cannotResolveDoc);
+            return;
+        }
+        const children = await buildChildNavTree(docId);
+        const childIds = new Set(children.map((node) => node.id));
+        const targets = [...new Set(blocks.flatMap((item) => item.targets))]
+            .filter((id) => id && id !== docId && !childIds.has(id));
+        if (!targets.length) {
+            showMessage(plugin.i18n.moveDocRefNone);
+            return;
+        }
+        const moved = await moveDocsAsChildren(docId, targets);
+        refreshAllChildNavPanels(plugin);
+        showMessage(formatTemplateMessage(plugin.i18n, "moveDocRefDone", { count: moved }));
+    } catch (error) {
+        console.warn(`${LOG_PREFIX} moveDocRef failed`, error);
+        showMessage(plugin.i18n.moveDocRefFailed);
+    } finally {
+        plugin.moveDocRefBusy = false;
+    }
+}
+
+async function deleteDocRefBlocksAndDocs(plugin, protyle, blocks) {
+    const editor = unwrapProtyle(protyle) || findProtyleByElement(blocks[0]?.block);
+    const { docId: hostDocId } = resolveProtyleDocId(editor) || {};
+    const ordered = blocks
+        .map((item) => {
+            const block = item.block?.isConnected
+                ? item.block
+                : document.querySelector(`[data-node-id="${item.blockId}"]`);
+            return block ? { ...item, block } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            const pos = a.block.compareDocumentPosition(b.block);
+            if (pos & Node.DOCUMENT_POSITION_FOLLOWING) {
+                return -1;
+            }
+            if (pos & Node.DOCUMENT_POSITION_PRECEDING) {
+                return 1;
+            }
+            return 0;
+        });
+    if (!ordered.length) {
+        throw new Error("doc ref blocks are gone");
+    }
+    const docIds = [...new Set(ordered.flatMap((item) => item.targets))]
+        .filter((id) => id && id !== hostDocId);
+    const docs = [];
+    for (const id of docIds) {
+        const pathInfo = await getDocPathById(id);
+        docs.push({ id, path: pathInfo?.path || "" });
+    }
+    docs.sort((a, b) => b.path.length - a.path.length);
+    const doOperations = ordered.map((item) => ({ action: "delete", id: item.blockId }));
+    await postBlockTransaction(plugin, editor, doOperations);
+    ordered.forEach((item) => item.block.remove());
+    for (const doc of docs) {
+        const response = await fetchSyncPost("/api/filetree/removeDocByID", { id: doc.id });
+        if (response && typeof response.code === "number" && response.code !== 0) {
+            throw new Error(response.msg || "removeDocByID failed");
+        }
+    }
+    await clearDocUndoHistory(docs.map((doc) => doc.id));
+    refreshAllChildNavPanels(plugin);
+    showMessage(formatTemplateMessage(plugin.i18n, "deleteDocRefDone", {
+        blocks: ordered.length,
+        count: docs.length,
     }));
 }
 
-function logChildDocIndexBuild(parentId, context) {
-    console.log(`${LOG_PREFIX} childDocIndex build`, {
-        parentId,
-        globalSort: formatSortModeLabel(context.globalSort),
-        notebookSort: formatSortModeLabel(context.notebookSortMode),
-        apiChildOrder: context.apiChildOrder,
-        createOrder: context.createOrder,
-        skipped: context.skipped,
+function siyuanAppId(plugin, protyle) {
+    return protyle?.app?.appId || plugin?.app?.appId || "";
+}
+
+async function postBlockTransaction(plugin, protyle, doOperations) {
+    const editor = unwrapProtyle(protyle);
+    const session = editor?.id;
+    const app = siyuanAppId(plugin, editor);
+    if (!session || !app || !doOperations.length) {
+        throw new Error("transaction context missing");
+    }
+    const response = await fetchSyncPost("/api/transactions", {
+        reqId: Date.now(),
+        session,
+        app,
+        transactions: [{ doOperations }],
+    });
+    if (response && typeof response.code === "number" && response.code !== 0) {
+        throw new Error(response.msg || "transactions failed");
+    }
+    return response;
+}
+
+async function clearDocUndoHistory(rootIDs) {
+    const ids = [...new Set(rootIDs.filter(Boolean))];
+    for (const rootID of ids) {
+        await fetchSyncPost("/api/transactions/clearHistory", { rootID });
+    }
+}
+
+function handleDeleteSelectedDocRefs(plugin, protyle, blocks) {
+    if (!blocks.length || plugin.deleteDocRefBusy) {
+        return;
+    }
+    const blockIds = [...new Set(blocks.map((item) => item.blockId).filter(Boolean))];
+    const docIds = [...new Set(blocks.flatMap((item) => item.targets).filter(Boolean))];
+    confirm(
+        plugin.i18n.deleteDocRefConfirmTitle,
+        formatTemplateMessage(plugin.i18n, "deleteDocRefConfirm", {
+            blocks: blockIds.length,
+            count: docIds.length,
+        }),
+        () => {
+            plugin.deleteDocRefBusy = true;
+            deleteDocRefBlocksAndDocs(plugin, protyle, blocks).catch((error) => {
+                console.warn(`${LOG_PREFIX} deleteDocRef failed`, error);
+                const detail = error?.message ? `：${error.message}` : "";
+                showMessage(`${plugin.i18n.deleteDocRefFailed}${detail}`);
+            }).finally(() => {
+                plugin.deleteDocRefBusy = false;
+            });
+        },
+    );
+}
+
+function handleClickBlockIcon(plugin, event) {
+    const detail = event?.detail ?? event;
+    const blocks = docRefBlocksFromSelection(detail?.blockElements);
+    if (!blocks.length) {
+        return;
+    }
+    const topMenu = window.siyuan?.menus?.menu;
+    if (!topMenu?.addItem) {
+        return;
+    }
+    const protyle = detail?.protyle;
+    topMenu.addItem({ type: "separator", id: "fhelper-docref-sep" });
+    topMenu.addItem({
+        id: "fhelper-move-docref",
+        icon: "iconMove",
+        label: plugin.i18n.moveDocRefToChild,
+        click: () => {
+            handleMoveSelectedDocRefs(plugin, protyle, blocks).catch((error) => {
+                console.warn(`${LOG_PREFIX} moveDocRef failed`, error);
+                showMessage(plugin.i18n.moveDocRefFailed);
+            });
+        },
+    });
+    topMenu.addItem({
+        id: "fhelper-delete-docref",
+        icon: "iconTrashcan",
+        label: plugin.i18n.deleteDocRefAndDoc,
+        click: () => handleDeleteSelectedDocRefs(plugin, protyle, blocks),
     });
 }
-*/
+
 
 async function getDocPathById(docId) {
     if (!docId) {
@@ -3938,280 +3786,32 @@ function sleepMs(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function flushChildNavSqlite(reason) {
-    try {
-        await fetchSyncPost("/api/sqlite/flushTransaction", {});
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} flushTransaction ${reason} failed`, error);
-    }
-}
-
-function collectNavBlockTargetsFromDom(protyle) {
-    const root = unwrapProtyle(protyle)?.wysiwyg?.element;
-    if (!root?.querySelectorAll) {
-        return [];
-    }
-    const targets = [];
-    root.querySelectorAll(`[${CHILD_NAV_FLAG_ATTR}="1"]`).forEach((el) => {
-        const fromAttr = el.getAttribute(CHILD_NAV_TARGET_ATTR);
-        const fromRef = el.querySelector?.('span[data-type~="block-ref"][data-id]')?.getAttribute("data-id");
-        const id = fromAttr || fromRef;
-        if (id) {
-            targets.push(id);
-        }
-    });
-    return targets;
-}
-
-function toDocDirPath(path) {
-    if (!path || path === "/") {
-        return "/";
-    }
-    return String(path).replace(/\.sy$/i, "");
-}
-
-function isDocPathUnderParent(childPath, parentPath, notebook, childBox) {
-    if (!childPath || !parentPath) {
-        return false;
-    }
-    if (childPath === parentPath) {
-        return true;
-    }
-    if (notebook && isNotebookBoxDocPath(parentPath, notebook)) {
-        return childBox === notebook && !isNotebookBoxDocPath(childPath, notebook);
-    }
-    const parentDir = toDocDirPath(parentPath);
-    if (parentDir === "/") {
-        return childPath !== "/";
-    }
-    return childPath === parentDir || childPath.startsWith(`${parentDir}/`);
-}
-
-async function queryDocPathsByIds(ids) {
-    const unique = [...new Set((ids || []).filter(Boolean))];
-    const result = new Map();
-    if (!unique.length) {
-        return result;
-    }
-    const inList = unique.map((id) => `'${escapeSqlId(id)}'`).join(",");
-    try {
-        const rows = await runSqlQuery(
-            `SELECT id, path, box FROM blocks WHERE type = 'd' AND id IN (${inList}) LIMIT ${CHILD_NAV_SQL_LIMIT}`,
-        );
-        (rows || []).forEach((row) => {
-            if (row?.id) {
-                result.set(row.id, { path: row.path || "", box: row.box || "" });
-            }
-        });
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} queryDocPathsByIds failed`, error);
-    }
-    return result;
-}
-
-async function collectNavBlockDocsToMove(parentId, protyle) {
-    if (!parentId) {
-        return [];
-    }
-    const [autoBlocks, children, parentPathInfo] = await Promise.all([
-        queryAutoChildNavBlocks(parentId),
-        buildChildNavTree(parentId),
-        getDocPathById(parentId),
-    ]);
-    const childIds = new Set(children.map((node) => node.id));
-    const targets = [...new Set([
-        ...(autoBlocks || []).map((block) => block.target),
-        ...collectNavBlockTargetsFromDom(protyle),
-    ].filter((id) => id && id !== parentId && !childIds.has(id)))];
-    if (!targets.length) {
-        return [];
-    }
-    const meta = await queryDocPathsByIds(targets);
-    return targets.filter((id) => {
-        const info = meta.get(id);
-        if (!info) {
-            return false;
-        }
-        if (parentPathInfo && isDocPathUnderParent(parentPathInfo.path, info.path, info.box, parentPathInfo.notebook)) {
-            return false;
-        }
-        return true;
-    });
-}
-
-async function collectNavBlockDocsToMoveReady(parentId, protyle) {
-    let toMove = await collectNavBlockDocsToMove(parentId, protyle);
-    if (toMove.length) {
-        return toMove;
-    }
-    await flushChildNavSqlite("before move-by-nav");
-    for (const delay of [350, 700, 1200]) {
-        await sleepMs(delay);
-        toMove = await collectNavBlockDocsToMove(parentId, protyle);
-        if (toMove.length) {
-            return toMove;
-        }
-    }
-    return [];
-}
-
-async function moveDocsAsChildren(parentId, docIds) {
-    if (!parentId || !docIds?.length) {
-        return 0;
-    }
-    const response = await fetchSyncPost("/api/filetree/moveDocsByID", {
-        fromIDs: docIds,
-        toID: parentId,
-    });
-    if (response && typeof response.code === "number" && response.code !== 0) {
-        throw new Error(response.msg || "moveDocsByID failed");
-    }
-    await flushChildNavSqlite("after moveDocsByID");
-    return docIds.length;
-}
-
-async function handleMoveDocsByNavBlocksForProtyle(plugin, protyle) {
-    if (plugin.moveDocsByNavBusy) {
-        return;
-    }
-    plugin.moveDocsByNavBusy = true;
-    try {
-        const editor = unwrapProtyle(protyle) || findProtyleByElement(protyle?.element);
-        const { docId } = resolveProtyleDocId(editor);
-        if (!docId) {
-            showMessage(plugin.i18n.cannotResolveDoc);
-            return;
-        }
-        const doc = await getDocDisplayTitle(docId, editor);
-        const toMove = await collectNavBlockDocsToMoveReady(docId, editor);
-        if (!toMove.length) {
-            showMessage(formatTemplateMessage(plugin.i18n, "moveDocsByNavBlocksNone", { doc }));
-            return;
-        }
-        const moved = await moveDocsAsChildren(docId, toMove);
-        scheduleSyncChildNavRefs(plugin, editor);
-        showMessage(formatTemplateMessage(plugin.i18n, "moveDocsByNavBlocksDone", { doc, count: moved }));
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} moveDocsByNavBlocks failed`, error);
-        showMessage(plugin.i18n.moveDocsByNavBlocksFailed);
-    } finally {
-        plugin.moveDocsByNavBusy = false;
-    }
-}
-
-function collectPresentChildNavTargets(autoBlocks, protyle) {
-    return new Set([
-        ...(autoBlocks || []).map((block) => block.target),
-        ...collectNavBlockTargetsFromDom(protyle),
-    ].filter(Boolean));
-}
-
-function shouldTrustDomNavTargets(children, autoBlocks, protyle) {
-    if (!unwrapProtyle(protyle)?.wysiwyg?.element) {
-        return false;
-    }
-    const childIds = new Set((children || []).map((node) => node.id));
-    const sql = new Set((autoBlocks || []).map((block) => block.target).filter((id) => childIds.has(id)));
-    const dom = new Set(collectNavBlockTargetsFromDom(protyle).filter((id) => childIds.has(id)));
-    if (!sql.size) {
-        return true;
-    }
-    const missing = [...sql].filter((id) => !dom.has(id)).length;
-    return missing <= Math.max(3, Math.ceil(sql.size * 0.15));
-}
-
-async function collectChildrenWithoutNavBlocksReady(parentId, protyle) {
-    if (!parentId) {
-        return [];
-    }
-    await flushChildNavSqlite("before delete-children-without-nav");
-    await sleepMs(350);
-    const [children, autoBlocks] = await Promise.all([
-        buildChildNavTree(parentId),
-        queryAutoChildNavBlocks(parentId),
-    ]);
-    const have = shouldTrustDomNavTargets(children, autoBlocks, protyle)
-        ? new Set(collectNavBlockTargetsFromDom(protyle).filter(Boolean))
-        : collectPresentChildNavTargets(autoBlocks, protyle);
-    return children.filter((node) => node?.id && !have.has(node.id));
-}
-
-async function removeDocsById(ids) {
-    let removed = 0;
-    for (const id of ids || []) {
-        if (!id) {
-            continue;
-        }
-        const response = await fetchSyncPost("/api/filetree/removeDocByID", { id });
-        if (response && typeof response.code === "number" && response.code !== 0) {
-            throw new Error(response.msg || "removeDocByID failed");
-        }
-        removed += 1;
-    }
-    await flushChildNavSqlite("after removeDocByID");
-    return removed;
-}
-
-async function handleDeleteChildrenWithoutNavForProtyle(plugin, protyle) {
-    if (plugin.deleteChildrenWithoutNavBusy) {
-        return;
-    }
-    plugin.deleteChildrenWithoutNavBusy = true;
-    try {
-        const editor = unwrapProtyle(protyle) || findProtyleByElement(protyle?.element);
-        const { docId } = resolveProtyleDocId(editor);
-        if (!docId) {
-            showMessage(plugin.i18n.cannotResolveDoc);
-            return;
-        }
-        const doc = await getDocDisplayTitle(docId, editor);
-        const toDelete = await collectChildrenWithoutNavBlocksReady(docId, editor);
-        if (!toDelete.length) {
-            showMessage(formatTemplateMessage(plugin.i18n, "deleteChildrenWithoutNavNone", { doc }));
-            return;
-        }
-        const deleted = await removeDocsById(toDelete.map((node) => node.id));
-        scheduleSyncChildNavRefs(plugin, editor);
-        showMessage(formatTemplateMessage(plugin.i18n, "deleteChildrenWithoutNavDone", { doc, count: deleted }));
-    } catch (error) {
-        console.warn(`${LOG_PREFIX} deleteChildrenWithoutNav failed`, error);
-        showMessage(plugin.i18n.deleteChildrenWithoutNavFailed);
-    } finally {
-        plugin.deleteChildrenWithoutNavBusy = false;
-    }
-}
-
 const BREADCRUMB_BTN_LOCATE = "fhelper-locate-in-tree";
-const BREADCRUMB_BTN_MOVE_BY_NAV = "fhelper-move-docs-by-nav";
-const BREADCRUMB_BTN_DELETE_WITHOUT_NAV = "fhelper-delete-children-without-nav";
 const LEGACY_BREADCRUMB_CHILD_INDEX = "fhelper-child-doc-index";
 const RETIRED_BREADCRUMB_BTN_TYPES = [
+    BREADCRUMB_BTN_LOCATE,
     LEGACY_BREADCRUMB_CHILD_INDEX,
     "fhelper-gather-refs",
     "fhelper-delete-unref-children",
+    "fhelper-move-docs-by-nav",
+    "fhelper-delete-children-without-nav",
 ];
 
+const BREADCRUMB_BTN_APPEND_UNREF = "fhelper-append-unref-children";
 const BREADCRUMB_DOC_ACTIONS = [
     {
-        type: BREADCRUMB_BTN_LOCATE,
-        iconHref: "#iconFocus",
-        tipKey: "locateInTreeBreadcrumbTip",
-        run: (plugin, editor) => handleLocateDocInTreeForProtyle(plugin, editor),
-        failKey: "locateInTreeFailed",
+        type: BREADCRUMB_BTN_APPEND_UNREF,
+        iconHref: "#iconLink",
+        tipKey: "appendUnrefChildrenBreadcrumbTip",
+        run: (plugin, editor) => handleAppendUnrefChildrenForProtyle(plugin, editor),
+        failKey: "appendUnrefChildrenFailed",
     },
     {
-        type: BREADCRUMB_BTN_MOVE_BY_NAV,
-        iconHref: "#iconMove",
-        tipKey: "moveDocsByNavBlocksBreadcrumbTip",
-        run: (plugin, editor) => handleMoveDocsByNavBlocksForProtyle(plugin, editor),
-        failKey: "moveDocsByNavBlocksFailed",
-    },
-    {
-        type: BREADCRUMB_BTN_DELETE_WITHOUT_NAV,
+        type: "fhelper-delete-unref-child-docs",
         iconHref: "#iconTrashcan",
-        tipKey: "deleteChildrenWithoutNavBreadcrumbTip",
-        run: (plugin, editor) => handleDeleteChildrenWithoutNavForProtyle(plugin, editor),
-        failKey: "deleteChildrenWithoutNavFailed",
+        tipKey: "deleteUnrefChildrenBreadcrumbTip",
+        run: (plugin, editor) => handleDeleteUnrefChildrenForProtyle(plugin, editor),
+        failKey: "deleteUnrefChildrenFailed",
     },
 ];
 
@@ -5562,31 +5162,6 @@ function getSlashItemKey(item) {
     return null;
 }
 
-function isNewChildDocNavRefSlashItem(item) {
-    if (!item || isSeparatorItem(item)) {
-        return false;
-    }
-    if (item.id === NEW_CHILD_DOC_NAV_REF_SLASH_ID) {
-        return true;
-    }
-    const key = getSlashItemKey(item);
-    return typeof key === "string" && key.endsWith(`:${NEW_CHILD_DOC_NAV_REF_SLASH_ID}`);
-}
-
-function pinNewChildDocNavRefSlash(items) {
-    if (!Array.isArray(items) || items.length < 2) {
-        return items;
-    }
-    const idx = items.findIndex(isNewChildDocNavRefSlashItem);
-    if (idx <= 0) {
-        return items;
-    }
-    const next = items.slice();
-    const [pinned] = next.splice(idx, 1);
-    next.unshift(pinned);
-    return next;
-}
-
 function extractSlashItemLabel(item) {
     if (item.name) {
         return item.name;
@@ -5622,7 +5197,7 @@ function buildSlashMenuItems(app) {
     } else if (items.length > 0 && items[items.length - 1].html === "separator") {
         items.pop();
     }
-    return pinNewChildDocNavRefSlash(items);
+    return items;
 }
 
 function buildSlashCatalog(app) {
@@ -5790,7 +5365,7 @@ function filterSlashItems(data, plugin, protyleArg = null) {
     } else {
         result = data.filter((item) => !isSeparatorItem(item) && isEnabled(item));
     }
-    return pinNewChildDocNavRefSlash(stripOrphanSeparators(result, isEnabled));
+    return stripOrphanSeparators(result, isEnabled);
 }
 
 function createDefaultConfig() {
@@ -5833,7 +5408,6 @@ function normalizeEditorConfig(data) {
         childDocWidget: {
             ...base.childDocWidget,
             ...(data.childDocWidget || {}),
-            mode: normalizeChildNavMode(data.childDocWidget?.mode),
         },
         configSync: createDefaultConfigSyncConfig(),
     };
@@ -6007,7 +5581,6 @@ class EditorFeatures {
     imageScaleCenterEl = null;
     panguSpacingEnableEl = null;
     docRefStyleEnableEl = null;
-    childDocWidgetEnableEl = null;
     protyleLayoutWatchers = new Map();
     panguSpacingWatchers = new Map();
     docRefByDoc = new Map();
@@ -6019,12 +5592,8 @@ class EditorFeatures {
     docRefWsHandler = null;
     docRefWsTimer = null;
     docRefWsPending = null;
-    childNavWsTimer = null;
-    childNavMountTimers = null;
     layoutRefreshTimer = null;
     windowResizeHandler = null;
-    moveDocsByNavBusy = false;
-    deleteChildrenWithoutNavBusy = false;
     breadcrumbMoreHandler = null;
 
     constructor(plugin) {
@@ -6081,7 +5650,6 @@ class EditorFeatures {
         this.config = this.data[STORAGE_NAME];
         activeFhelperPlugin = this;
         removeLegacyFileTreeHideCss();
-        registerNewChildDocNavRefSlash(this.plugin);
         this.addIcons(`
 <symbol id="iconFhelper" viewBox="0 0 24 24">
   <path fill="currentColor" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
@@ -6149,7 +5717,9 @@ class EditorFeatures {
 
         this.protyleStaticLoadHandler = (event) => {
             patchAllEditors(this);
-            handleProtyleDocRefStaticLoad(this, event);
+            refreshChildNavPanel(this, getProtyleFromEvent(event)).catch((error) => {
+                console.warn(`${LOG_PREFIX} refreshChildNavPanel failed`, error);
+            });
         };
         this.eventBus.on("loaded-protyle-static", this.protyleStaticLoadHandler);
 
@@ -6192,6 +5762,9 @@ class EditorFeatures {
         };
         this.eventBus.on("open-menu-breadcrumbmore", this.breadcrumbMoreHandler);
 
+        this.blockIconHandler = (event) => handleClickBlockIcon(this, event);
+        this.eventBus.on("click-blockicon", this.blockIconHandler);
+
         this.windowResizeHandler = () => {
             if (!this.config.imageScale?.enabled) {
                 return;
@@ -6207,7 +5780,7 @@ class EditorFeatures {
         syncDocRefStyleFeature(this);
         patchDocActionBreadcrumbButtons(this);
         removeLegacyFileTreeHideCss();
-        syncAllChildNavPanels(this);
+        refreshAllChildNavPanels(this);
         if (isConfigSyncActive()) {
             installConfigSyncWatchers(this);
         }
@@ -6253,16 +5826,15 @@ class EditorFeatures {
             this.docRefWsHandler = null;
         }
         removeLegacyFileTreeHideCss();
+        removeLegacyChildNavHosts();
         if (this.childNavWsTimer) {
             window.clearTimeout(this.childNavWsTimer);
             this.childNavWsTimer = null;
         }
-        if (this.childNavMountTimers) {
-            this.childNavMountTimers.forEach((timer) => window.clearTimeout(timer));
-            this.childNavMountTimers.clear();
-            this.childNavMountTimers = null;
+        if (this.blockIconHandler) {
+            this.eventBus.off("click-blockicon", this.blockIconHandler);
+            this.blockIconHandler = null;
         }
-        removeLegacyChildNavHosts();
         if (this.breadcrumbMoreHandler) {
             this.eventBus.off("open-menu-breadcrumbmore", this.breadcrumbMoreHandler);
             this.breadcrumbMoreHandler = null;
@@ -6332,7 +5904,6 @@ class EditorFeatures {
                 childDocWidget: {
                     ...createDefaultChildDocWidgetConfig(),
                     ...(data.childDocWidget || {}),
-                    mode: normalizeChildNavMode(data.childDocWidget?.mode),
                 },
                 configSync: createDefaultConfigSyncConfig(),
             };
@@ -6343,7 +5914,7 @@ class EditorFeatures {
             if (this.config.imageScale?.enabled) {
                 scheduleLayoutRefresh(this);
             }
-            syncAllChildNavPanels(this);
+            refreshAllChildNavPanels(this);
             patchDocActionBreadcrumbButtons(this);
             removeLegacyFileTreeHideCss();
             if (isConfigSyncActive()) {
@@ -6496,11 +6067,12 @@ class EditorFeatures {
             this.config.childDocWidget = {
                 ...(this.config.childDocWidget || createDefaultChildDocWidgetConfig()),
                 enabled: this.childDocWidgetEnableEl.checked,
-                mode: "direct",
             };
+        } else if (!this.config.childDocWidget) {
+            this.config.childDocWidget = createDefaultChildDocWidgetConfig();
         }
         delete this.config.fileTree;
-        // Config/theme cache is always on (desktop); persist defaults for older configs.
+        // Config cache is always on; themes are not copied.
         this.config.configSync = createDefaultConfigSyncConfig();
     }
 
@@ -6517,7 +6089,7 @@ class EditorFeatures {
         syncDocRefStyleFeature(this);
         this.data[STORAGE_NAME] = this.config;
         scheduleLayoutRefresh(this);
-        syncAllChildNavPanels(this);
+        refreshAllChildNavPanels(this);
         patchDocActionBreadcrumbButtons(this);
         removeLegacyFileTreeHideCss();
         if (isConfigSyncActive()) {
@@ -6591,7 +6163,7 @@ class EditorFeatures {
         const dpiAvailable = canUseImageScale();
 
         const childNavSection = this.createSettingSection(this.i18n.sectionChildDocWidget);
-        this.childDocWidgetEnableEl = this.createSettingSwitch(childDocWidget.enabled === true);
+        this.childDocWidgetEnableEl = this.createSettingSwitch(childDocWidget.enabled !== false);
         this.bindLiveSave(this.childDocWidgetEnableEl);
         childNavSection.appendChild(this.createSettingRow({
             title: this.i18n.childDocWidgetEnable,
