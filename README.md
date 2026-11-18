@@ -1,6 +1,6 @@
 # cursor极简
 
-Currently matched versions: theme **v2.0.14**, plugin **v1.2.13**.
+Currently matched versions: theme **v2.0.15**, plugin **v1.2.14**.
 
 **Inspired by Cursor and Notion: a clean, modern layout and interaction. Adds CJK-Latin spacing, image optimization, favorites, and other highly requested features. Please install the cursor极简 theme and the cursor极简工具 plugin together.**
 
@@ -56,7 +56,7 @@ Set **cursor极简** for both light and dark. Settings: Plugins menu → **curso
 
 Stock SiYuan is busy. This overlay sits on daylight / midnight and only changes layout.
 
-Dock icons sit on a top strip in the sidebar so the editor stays wide.
+Dock icons sit at the bottom of each sidebar.
 
 Favorites and recents are simple lists. The row you click is the only highlight.
 
@@ -127,6 +127,10 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 
 ### Theme cursor极简
 
+#### v2.0.15
+
+- Restore both dock bars and sidebar content in SiYuan 3.8.10 and align the Windows caption buttons.
+
 #### v2.0.14
 
 - Breadcrumb hides only Lock editing; the document icon stays
@@ -166,12 +170,11 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 
 - Four-region layout CSS applies by default, even if the plugin has not loaded
 
-#### v2.0.5
-
-- Adaptive title-bar height is a toggle
-- Settings panel CSS lives in the plugin, so it still looks right on other themes
-
 ### Plugin cursor极简工具
+
+#### v1.2.14
+
+- Pair with theme v2.0.15 for the SiYuan 3.8.10 layout fixes.
 
 #### v1.2.13
 
@@ -217,7 +220,3 @@ If this theme or plugin helps you, please visit the [support page](https://siyua
 
 - Shares the same intro as the theme, with feature screenshots
 - Marketplace blurb now cites Cursor / Notion and asks to use the theme and plugin together
-
-#### v1.2.4
-
-- Breadcrumb uses leftover width; first/last stay full; middle levels collapse to `...` with a prefix-path tooltip
